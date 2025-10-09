@@ -1807,6 +1807,24 @@ if __name__ == "__main__":
     input_vocab_size = pt_tokenizer.vocab_size
     target_vocab_size = en_tokenizer.vocab_size
 
+    # 创建不带 MoE 的模型用于参数对比
+    model_without_moe = Transformer(
+        num_layers=num_layers,
+        input_vocab_size=input_vocab_size,
+        target_vocab_size=target_vocab_size,
+        max_length=max_length,
+        d_model=d_model,
+        num_heads=num_heads,
+        dff=dff,
+        rate=dropout_rate,
+        src_padding_idx=pt_tokenizer.pad_token_id if hasattr(pt_tokenizer, "pad_token_id") else None,
+        tgt_padding_idx=en_tokenizer.pad_token_id if hasattr(en_tokenizer, "pad_token_id") else None,
+        use_rope=True,
+        use_moe=False,
+        moe_config=None,
+    )
+
+    # 创建带 MoE 的模型
     model = Transformer(
         num_layers=num_layers,
         input_vocab_size=input_vocab_size,
@@ -1822,6 +1840,60 @@ if __name__ == "__main__":
         use_moe=use_moe,
         moe_config=moe_config,
     )
+
+
+    # 计算参数数量对比
+    def count_parameters(model):
+        """计算模型参数数量"""
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        return total_params, trainable_params
+
+
+    # 不带 MoE 的参数数量
+    total_params_without_moe, trainable_params_without_moe = count_parameters(model_without_moe)
+
+    # 带 MoE 的参数数量
+    total_params_with_moe, trainable_params_with_moe = count_parameters(model)
+
+    # 打印参数对比
+    logger.info("=" * 80)
+    logger.info("🔍 模型参数对比分析")
+    logger.info("=" * 80)
+    logger.info(f"📊 不带 MoE 的模型:")
+    logger.info(f"   总参数数量: {total_params_without_moe:,}")
+    logger.info(f"   可训练参数: {trainable_params_without_moe:,}")
+    logger.info(f"📊 带 MoE 的模型:")
+    logger.info(f"   总参数数量: {total_params_with_moe:,}")
+    logger.info(f"   可训练参数: {trainable_params_with_moe:,}")
+
+    # 计算参数增长
+    param_increase = total_params_with_moe - total_params_without_moe
+    param_increase_ratio = (param_increase / total_params_without_moe) * 100
+
+    logger.info(f"📈 参数增长:")
+    logger.info(f"   绝对增长: +{param_increase:,} 参数")
+    logger.info(f"   相对增长: +{param_increase_ratio:.2f}%")
+
+    # MoE 配置信息
+    if use_moe:
+        logger.info(f"🔧 MoE 配置:")
+        logger.info(f"   专家数量: {moe_config.num_experts}")
+        logger.info(f"   每 token 专家数: {moe_config.num_experts_per_tok}")
+        logger.info(f"   激活函数: {moe_config.hidden_act}")
+        logger.info(f"   辅助损失系数: {moe_config.router_aux_loss_coef}")
+
+        # 计算 MoE 相关参数
+        moe_params_per_expert = moe_config.hidden_size * moe_config.intermediate_size * 3  # w1, w2, w3
+        total_moe_params = moe_params_per_expert * moe_config.num_experts * num_layers * 2  # encoder + decoder
+        logger.info(f"   MoE 专家参数: {moe_params_per_expert:,} 每专家")
+        logger.info(f"   总 MoE 参数: {total_moe_params:,}")
+
+    logger.info("=" * 80)
+
+    # 删除对比模型以节省内存
+    del model_without_moe
+    assert 1 == 2
 
     ##############################【Test - optimizer | scheduler 】##############################
     # # 6. 自定义学习率和优化器
