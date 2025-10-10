@@ -1294,6 +1294,10 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         device = "cuda" if torch.cuda.is_available() else "cpu"
     transformer.train()
 
+    # 清理GPU缓存
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     inp = batch["pt_input_ids"].to(device)
     tar = batch["en_input_ids"].to(device)
 
@@ -1326,7 +1330,14 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
 
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(transformer.parameters(), max_norm=1.0)
+
+    # 改进的梯度裁剪 - 降低阈值并监控梯度范数
+    grad_norm = torch.nn.utils.clip_grad_norm_(transformer.parameters(), max_norm=0.5)
+
+    # 只在梯度范数非常大时才记录警告
+    if grad_norm > 4.0:
+        logger.warning(f"Very large gradient norm detected: {grad_norm:.4f}")
+
     optimizer.step()
     if scheduler is not None:
         scheduler.step()
@@ -1394,9 +1405,16 @@ def train_model(
                     writer.add_scalar('Train/Learning_Rate', current_lr, global_step)
 
                 if batch_idx % log_every == 0:
+                    # 添加内存监控
+                    memory_info = ""
+                    if torch.cuda.is_available():
+                        memory_allocated = torch.cuda.memory_allocated() / 1024 ** 3
+                        memory_reserved = torch.cuda.memory_reserved() / 1024 ** 3
+                        memory_info = f" GPU内存: {memory_allocated:.2f}GB/{memory_reserved:.2f}GB"
+
                     logger.info(
                         f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step}"
-                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}"
+                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}{memory_info}"
                     )
 
             # 记录每个 epoch 的平均指标到 TensorBoard
@@ -1428,15 +1446,31 @@ def train_model(
             )
 
         except Exception as e:
-            logger.info(f"报错啦!!! 报错信息: {e}")
-            save_ckpt(
-                model=model,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                epoch=epoch,
-                step=global_step,
-                tag="error"
-            )
+            import traceback
+            error_msg = f"训练出错: {e}"
+            logger.error(error_msg)
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
+
+            # 检查CUDA内存
+            if torch.cuda.is_available():
+                logger.error(f"CUDA内存使用: {torch.cuda.memory_allocated() / 1024 ** 3:.2f} GB")
+                logger.error(f"CUDA内存缓存: {torch.cuda.memory_reserved() / 1024 ** 3:.2f} GB")
+
+            # 只保存一次错误检查点，避免产生太多文件
+            if not hasattr(train_model, '_error_saved'):
+                save_ckpt(
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    epoch=epoch,
+                    step=global_step,
+                    tag="error"
+                )
+                train_model._error_saved = True
+
+            # 继续训练而不是中断
+            logger.info("跳过当前batch，继续训练...")
+            continue
 
     # 训练结束后关闭 TensorBoard writer
     writer.close()
@@ -1685,7 +1719,7 @@ if __name__ == "__main__":
     train_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_train.csv"
     val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
-    checkpoint_dir = './checkpoints_rope_moe'
+    checkpoint_dir = './checkpoints'
 
     # 构建词表参数
     vocab_size = 2 ** 13  # 词表大小
@@ -1696,7 +1730,7 @@ if __name__ == "__main__":
     # 模型训练超参数
     batch_size = 64  # 批处理数
     warmup_steps = 4000  # warmup steps数
-    epochs = 50  # 训练轮数
+    epochs = 10  # 训练轮数
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
@@ -1725,7 +1759,7 @@ if __name__ == "__main__":
         n_routed_experts=8,
         routed_scaling_factor=1.0,
         scoring_func="sigmoid",
-        topk_method="noaux_tc",
+        topk_method="noaux_tc",  # 现在支持训练模式
         n_group=1,
         topk_group=1,
         norm_topk_prob=True,
@@ -1873,7 +1907,7 @@ if __name__ == "__main__":
     import gc
 
     gc.collect()
-    assert 1 == 0
+    # assert 1==0
     ##############################【Test - optimizer | scheduler 】##############################
     # # 6. 自定义学习率和优化器
     # optimizer = optim.Adam(model.parameters(),
@@ -1948,8 +1982,8 @@ if __name__ == "__main__":
             tensorboard_dir="runs",  # TensorBoard 日志目录
             moe_config=moe_config,  # MoE 配置
         )
-    else:
-        start_epoch, global_step = load_ckpt(model, optimizer, scheduler, device=device)
-        logger.info("Checkpoint loaded successfully!")
+    # else:
+    #     start_epoch, global_step = load_ckpt(model, optimizer, scheduler, device=device)
+    #     logger.info("Checkpoint loaded successfully!")
 
 

@@ -54,7 +54,7 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.utils.import_utils import is_torch_fx_available
-from .configuration_deepseek import DeepseekV3Config
+from configuration_deepseek import DeepseekV3Config
 import torch.distributed as dist
 import numpy as np
 
@@ -435,7 +435,8 @@ class MoEGate(nn.Module):
 
         ### select top-k experts
         if self.topk_method == "noaux_tc":
-            assert not self.training
+            # 移除训练模式限制，允许在训练时使用
+            # assert not self.training
             scores_for_choice = scores.view(bsz * seq_len, -1) + self.e_score_correction_bias.unsqueeze(0)
             group_scores = (
                 scores_for_choice.view(bsz * seq_len, self.n_group, -1).topk(2, dim=-1)[0].sum(dim = -1)
@@ -523,14 +524,57 @@ class DeepseekV3MoE(nn.Module):
         identity = hidden_states
         orig_shape = hidden_states.shape
         topk_idx, topk_weight = self.gate(hidden_states)
-        hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-        flat_topk_idx = topk_idx.view(-1)
+        
         if not self.training:
-            y = self.moe_infer(hidden_states, topk_idx, topk_weight).view(*orig_shape)
+            # 推理模式：使用扁平化的hidden_states
+            hidden_states_flat = hidden_states.view(-1, hidden_states.shape[-1])
+            y = self.moe_infer(hidden_states_flat, topk_idx, topk_weight).view(*orig_shape)
+        else:
+            # 训练模式：直接使用原始形状的hidden_states
+            y = self.moe_forward(hidden_states, topk_idx, topk_weight)
+            # 确保返回的张量形状与输入一致
+            y = y.view(*orig_shape)
+            
         if self.config.n_shared_experts is not None:
             y = y + self.shared_experts(identity)
         return y
 
+    def moe_forward(self, x, topk_ids, topk_weight):
+        """训练模式下的MoE前向传播"""
+        batch_size, seq_len, hidden_size = x.shape
+        x = x.view(-1, hidden_size)  # [batch_size * seq_len, hidden_size]
+        
+        # 初始化输出
+        y = torch.zeros_like(x)
+        
+        # 对每个专家计算输出
+        for expert_idx in range(len(self.experts)):
+            # 找到使用当前专家的token
+            expert_mask = (topk_ids == expert_idx).any(dim=-1)  # [batch_size * seq_len]
+            
+            if expert_mask.any():
+                # 获取使用当前专家的token
+                expert_tokens = x[expert_mask]  # [num_tokens, hidden_size]
+                
+                # 通过专家网络
+                expert_output = self.experts[expert_idx](expert_tokens)  # [num_tokens, hidden_size]
+                
+                # 计算权重
+                expert_weights = topk_weight[expert_mask]  # [num_tokens, top_k]
+                expert_indices = topk_ids[expert_mask]  # [num_tokens, top_k]
+                
+                # 找到当前专家在topk中的位置
+                expert_positions = (expert_indices == expert_idx).float()  # [num_tokens, top_k]
+                expert_weights_for_this = (expert_weights * expert_positions).sum(dim=-1, keepdim=True)  # [num_tokens, 1]
+                
+                # 加权输出
+                weighted_output = expert_output * expert_weights_for_this
+                
+                # 将结果放回对应位置
+                y[expert_mask] += weighted_output
+        
+        return y
+    
     @torch.no_grad()
     def moe_infer(self, x, topk_ids, topk_weight):
         cnts = topk_ids.new_zeros((topk_ids.shape[0], len(self.experts)))
