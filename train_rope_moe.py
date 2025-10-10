@@ -23,27 +23,14 @@ from torch.optim.lr_scheduler import _LRScheduler
 from transformers import get_cosine_schedule_with_warmup
 from datetime import datetime
 from loguru import logger
+from torch.utils.tensorboard import SummaryWriter
+from modeling_deepseek import DeepseekV3MoE
 from collections import OrderedDict
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
-# MoE 相关配置和类
-class ClassInstantier(OrderedDict):
-    def __getitem__(self, key):
-        content = super().__getitem__(key)
-        cls, kwargs = content if isinstance(content, tuple) else (content, {})
-        return cls(**kwargs)
-
-
-ACT2CLS = {
-    "silu": nn.SiLU,
-    "relu": nn.ReLU,
-    "gelu": nn.GELU,
-}
-ACT2FN = ClassInstantier(ACT2CLS)
-
-
+# MoE 配置类
 class MoEConfig:
     """MoE 配置类"""
 
@@ -56,6 +43,15 @@ class MoEConfig:
             hidden_act="silu",
             router_aux_loss_coef=0.001,
             use_moe=True,
+            n_routed_experts=8,
+            routed_scaling_factor=1.0,
+            scoring_func="sigmoid",
+            topk_method="noaux_tc",
+            n_group=1,
+            topk_group=1,
+            norm_topk_prob=True,
+            n_shared_experts=None,
+            moe_intermediate_size=2048,
     ):
         self.num_experts = num_experts
         self.num_experts_per_tok = num_experts_per_tok
@@ -64,119 +60,15 @@ class MoEConfig:
         self.hidden_act = hidden_act
         self.router_aux_loss_coef = router_aux_loss_coef
         self.use_moe = use_moe
-
-
-class MoEMLP(nn.Module):
-    """MoE 中的单个专家 MLP"""
-
-    def __init__(self, config: MoEConfig):
-        super().__init__()
-        self.ffn_dim = config.intermediate_size
-        self.hidden_dim = config.hidden_size
-
-        self.w1 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
-        self.w2 = nn.Linear(self.ffn_dim, self.hidden_dim, bias=False)
-        self.w3 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
-
-        self.act_fn = ACT2FN[config.hidden_act]
-
-    def forward(self, hidden_states, routing_weights):
-        current_hidden_states = self.act_fn(self.w1(hidden_states)) * self.w3(hidden_states)
-        current_hidden_states = self.w2(current_hidden_states)
-        return routing_weights * current_hidden_states
-
-
-class MoESparseBlock(nn.Module):
-    """MoE 稀疏块"""
-
-    def __init__(self, config: MoEConfig):
-        super().__init__()
-        self.hidden_dim = config.hidden_size
-        self.ffn_dim = config.intermediate_size
-        self.num_experts = config.num_experts
-        self.top_k = config.num_experts_per_tok
-
-        # 门控网络
-        self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
-
-        # 专家网络
-        self.experts = nn.ModuleList([MoEMLP(config) for _ in range(self.num_experts)])
-
-    def forward(self, hidden_states: torch.Tensor):
-        batch_size, sequence_length, hidden_dim = hidden_states.shape
-        hidden_states = hidden_states.view(-1, hidden_dim)
-        router_logits = self.gate(hidden_states)
-
-        routing_weights_pre = F.softmax(router_logits, dim=1, dtype=torch.float)
-        routing_weights, selected_experts = torch.topk(routing_weights_pre, self.top_k, dim=-1)
-        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-        routing_weights = routing_weights.to(hidden_states.dtype)
-
-        final_hidden_states = torch.zeros(
-            (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-        )
-
-        # 创建专家掩码
-        expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
-
-        # 遍历所有专家
-        for expert_idx in range(self.num_experts):
-            expert_layer = self.experts[expert_idx]
-            idx, top_x = torch.where(expert_mask[expert_idx])
-
-            if top_x.shape[0] == 0:
-                continue
-
-            top_x_list = top_x.tolist()
-            idx_list = idx.tolist()
-
-            current_state = hidden_states[None, top_x_list].reshape(-1, hidden_dim)
-            current_hidden_states = expert_layer(current_state, routing_weights[top_x_list, idx_list, None])
-
-            final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
-
-        final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
-
-        return final_hidden_states, router_logits
-
-
-def load_balancing_loss_func(gate_logits, num_experts: int = None, top_k=2) -> float:
-    """计算负载均衡损失"""
-    if gate_logits is None or len(gate_logits) == 0:
-        return 0
-
-    # 如果 gate_logits 是列表，需要合并所有层的 router_logits
-    if isinstance(gate_logits, list):
-        if len(gate_logits) == 0:
-            return 0
-        # 合并所有层的 router_logits
-        compute_device = gate_logits[0].device
-        gate_logits = torch.cat([gate.to(compute_device) for gate in gate_logits], dim=0)
-    elif isinstance(gate_logits, tuple):
-        compute_device = gate_logits[0].device
-        gate_logits = torch.cat([gate.to(compute_device) for gate in gate_logits], dim=0)
-
-    # 确保 gate_logits 是 2D 张量 [batch_size * seq_len, num_experts]
-    if gate_logits.dim() == 3:
-        batch_size, seq_len, num_experts_dim = gate_logits.shape
-        gate_logits = gate_logits.view(-1, num_experts_dim)
-
-    routing_weights, selected_experts = torch.topk(gate_logits, top_k, dim=-1)
-    routing_weights = routing_weights.softmax(dim=-1)
-
-    if selected_experts.dtype != torch.int64:
-        selected_experts = selected_experts.to(torch.int64)
-
-    if len(selected_experts.shape) == 2:
-        selected_experts = selected_experts.unsqueeze(2)
-
-    expert_mask = torch.nn.functional.one_hot(selected_experts, num_experts)
-    expert_mask = torch.max(expert_mask, axis=-2).values
-    expert_mask = expert_mask.to(torch.float32)
-    tokens_per_group_and_expert = torch.mean(expert_mask, axis=-2)
-
-    router_prob_per_group_and_expert = torch.mean(routing_weights, axis=-1)
-    return torch.mean(tokens_per_group_and_expert * router_prob_per_group_and_expert.unsqueeze(-1)) * (num_experts ** 2)
+        self.n_routed_experts = n_routed_experts
+        self.routed_scaling_factor = routed_scaling_factor
+        self.scoring_func = scoring_func
+        self.topk_method = topk_method
+        self.n_group = n_group
+        self.topk_group = topk_group
+        self.norm_topk_prob = norm_topk_prob
+        self.n_shared_experts = n_shared_experts
+        self.moe_intermediate_size = moe_intermediate_size
 
 
 def get_device():
@@ -890,7 +782,7 @@ def feed_forward_network(d_model, dff, use_moe=False, moe_config=None):
         nn.Module 模型
     """
     if use_moe and moe_config is not None:
-        return MoESparseBlock(moe_config)
+        return DeepseekV3MoE(moe_config)
     else:
         return nn.Sequential(
             nn.Linear(d_model, dff),
@@ -913,7 +805,6 @@ class EncoderLayer(nn.Module):
         super().__init__()
         self.mha = MultiHeadAttention(d_model, num_heads, use_rope=use_rope)  # 前面已实现
         self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)  # 支持 MoE
-        self.use_moe = use_moe
 
         self.norm1 = nn.LayerNorm(d_model, eps=1e-6)
         self.norm2 = nn.LayerNorm(d_model, eps=1e-6)
@@ -932,16 +823,18 @@ class EncoderLayer(nn.Module):
         out1 = self.norm1(x + attn_out)  # 残差 + LayerNorm
 
         # Feed Forward
-        if self.use_moe:
-            ffn_out, router_logits = self.ffn(out1)  # [B, L, d_model], router_logits
-            ffn_out = self.dropout2(ffn_out)
-            out2 = self.norm2(out1 + ffn_out)
-            return out2, router_logits
+        ffn_out = self.ffn(out1)  # [B, L, d_model] 或 (ffn_out, router_logits) 如果使用 MoE
+        if isinstance(ffn_out, tuple):
+            ffn_out, router_logits = ffn_out
         else:
-            ffn_out = self.ffn(out1)  # [B, L, d_model]
-            ffn_out = self.dropout2(ffn_out)
-            out2 = self.norm2(out1 + ffn_out)
-            return out2
+            router_logits = None
+
+        ffn_out = self.dropout2(ffn_out)
+        out2 = self.norm2(out1 + ffn_out)
+
+        if router_logits is not None:
+            return out2, router_logits
+        return out2
 
 
 class DecoderLayer(nn.Module):
@@ -963,7 +856,6 @@ class DecoderLayer(nn.Module):
         self.mha2 = MultiHeadAttention(d_model, num_heads, use_rope=use_rope)  # cross-attn
 
         self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)
-        self.use_moe = use_moe
 
         self.norm1 = nn.LayerNorm(d_model, eps=1e-6)
         self.norm2 = nn.LayerNorm(d_model, eps=1e-6)
@@ -991,16 +883,18 @@ class DecoderLayer(nn.Module):
         out2 = self.norm2(out1 + attn2_out)
 
         # 3) FFN
-        if self.use_moe:
-            ffn_out, router_logits = self.ffn(out2)  # [B,Lt,D], router_logits
-            ffn_out = self.dropout3(ffn_out)
-            out3 = self.norm3(out2 + ffn_out)  # [B,Lt,D]
-            return out3, attn_weights1, attn_weights2, router_logits
+        ffn_out = self.ffn(out2)  # [B,Lt,D] 或 (ffn_out, router_logits) 如果使用 MoE
+        if isinstance(ffn_out, tuple):
+            ffn_out, router_logits = ffn_out
         else:
-            ffn_out = self.ffn(out2)  # [B,Lt,D]
-            ffn_out = self.dropout3(ffn_out)
-            out3 = self.norm3(out2 + ffn_out)  # [B,Lt,D]
-            return out3, attn_weights1, attn_weights2
+            router_logits = None
+
+        ffn_out = self.dropout3(ffn_out)
+        out3 = self.norm3(out2 + ffn_out)  # [B,Lt,D]
+
+        if router_logits is not None:
+            return out3, attn_weights1, attn_weights2, router_logits
+        return out3, attn_weights1, attn_weights2
 
 
 class EncoderModel(nn.Module):
@@ -1014,7 +908,6 @@ class EncoderModel(nn.Module):
         self.d_model = d_model
         self.num_layers = num_layers
         self.max_length = max_length
-        self.use_moe = use_moe
 
         # Embedding
         self.embedding = nn.Embedding(input_vocab_size, d_model, padding_idx=padding_idx)
@@ -1029,8 +922,8 @@ class EncoderModel(nn.Module):
 
         # 堆叠 EncoderLayer（前面我们已实现过）
         self.encoder_layers = nn.ModuleList(
-            [EncoderLayer(d_model, num_heads, dff, rate, use_rope=self.use_rope,
-                          use_moe=use_moe, moe_config=moe_config) for _ in range(num_layers)]
+            [EncoderLayer(d_model, num_heads, dff, rate, use_rope=self.use_rope, use_moe=use_moe, moe_config=moe_config)
+             for _ in range(num_layers)]
         )
 
         # 预存缩放因子
@@ -1040,7 +933,7 @@ class EncoderModel(nn.Module):
         """
         x: [B, L]  （token ids）
         src_mask: [B, 1, L, L] 或 [B, L, L]，1=屏蔽，0=保留（与前文一致）
-        return: 编码结果 [B, L, d_model] 或 (编码结果, router_logits_list) 如果使用 MoE
+        return: 编码结果 [B, L, d_model]
         """
         B, L = x.shape
         # 等价于 tf.debugging.assert_less_equal
@@ -1060,13 +953,14 @@ class EncoderModel(nn.Module):
         # 逐层 Encoder
         router_logits_list = []
         for layer in self.encoder_layers:
-            if self.use_moe:
-                x, router_logits = layer(x, src_mask)
+            layer_output = layer(x, src_mask)
+            if isinstance(layer_output, tuple):
+                x, router_logits = layer_output
                 router_logits_list.append(router_logits)
             else:
-                x = layer(x, src_mask)
+                x = layer_output
 
-        if self.use_moe:
+        if router_logits_list:
             return x, router_logits_list
         return x
 
@@ -1085,7 +979,6 @@ class DecoderModel(nn.Module):
         self.num_layers = num_layers
         self.max_length = max_length
         self.d_model = d_model
-        self.use_moe = use_moe
 
         # 词嵌入
         self.embedding = nn.Embedding(target_vocab_size, d_model, padding_idx=padding_idx)
@@ -1100,8 +993,8 @@ class DecoderModel(nn.Module):
 
         # 堆叠解码层
         self.decoder_layers = nn.ModuleList(
-            [DecoderLayer(d_model, num_heads, dff, rate, use_rope=self.use_rope,
-                          use_moe=use_moe, moe_config=moe_config) for _ in range(num_layers)]
+            [DecoderLayer(d_model, num_heads, dff, rate, use_rope=self.use_rope, use_moe=use_moe, moe_config=moe_config)
+             for _ in range(num_layers)]
         )
 
         self.scale = math.sqrt(d_model)
@@ -1127,16 +1020,18 @@ class DecoderModel(nn.Module):
         router_logits_list = []
 
         for i, layer in enumerate(self.decoder_layers, start=1):
-            if self.use_moe:
-                x, attn1, attn2, router_logits = layer(x, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask)
+            layer_output = layer(x, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask)
+            if len(layer_output) == 4:  # 包含 router_logits
+                x, attn1, attn2, router_logits = layer_output
                 router_logits_list.append(router_logits)
-            else:
-                x, attn1, attn2 = layer(x, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask)
+            else:  # 不包含 router_logits
+                x, attn1, attn2 = layer_output
+
             attention_weights[f"decoder_layer{i}_att1"] = attn1  # [B, H, Lt, Lt]
             attention_weights[f"decoder_layer{i}_att2"] = attn2  # [B, H, Lt, Ls]
 
         # x: (B, Lt, D)
-        if self.use_moe:
+        if router_logits_list:
             return x, attention_weights, router_logits_list
         return x, attention_weights
 
@@ -1147,9 +1042,6 @@ class Transformer(nn.Module):
                  src_padding_idx: int = None, tgt_padding_idx: int = None,
                  use_rope: bool = True, use_moe: bool = False, moe_config=None):
         super().__init__()
-        self.use_moe = use_moe
-        self.moe_config = moe_config
-
         self.encoder_model = EncoderModel(
             num_layers=num_layers,
             input_vocab_size=input_vocab_size,
@@ -1191,20 +1083,35 @@ class Transformer(nn.Module):
           attention_weights: dict，包含每层的 attn
           router_logits: list，包含每层的 router_logits（如果使用 MoE）
         """
-        if self.use_moe:
-            enc_out, enc_router_logits = self.encoder_model(inp_ids, src_mask=src_mask)  # [B, L_src, D], list
-            dec_out, attention_weights, dec_router_logits = self.decoder_model(
-                tgt_ids, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask
-            )  # [B, L_tgt, D], dict, list
-            logits = self.final_layer(dec_out)  # [B, L_tgt, V_tgt]
-            return logits, attention_weights, enc_router_logits + dec_router_logits
+        enc_output = self.encoder_model(inp_ids, src_mask=src_mask)  # [B, L_src, D] 或 (enc_out, enc_router_logits)
+        if isinstance(enc_output, tuple):
+            enc_out, enc_router_logits = enc_output
         else:
-            enc_out = self.encoder_model(inp_ids, src_mask=src_mask)  # [B, L_src, D]
-            dec_out, attention_weights = self.decoder_model(
-                tgt_ids, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask
-            )  # [B, L_tgt, D], dict
-            logits = self.final_layer(dec_out)  # [B, L_tgt, V_tgt]
-            return logits, attention_weights
+            enc_out = enc_output
+            enc_router_logits = None
+
+        dec_output = self.decoder_model(
+            tgt_ids, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask
+        )  # [B, L_tgt, D], dict 或 (dec_out, attention_weights, dec_router_logits)
+
+        if isinstance(dec_output, tuple) and len(dec_output) == 3:
+            dec_out, attention_weights, dec_router_logits = dec_output
+        else:
+            dec_out, attention_weights = dec_output
+            dec_router_logits = None
+
+        logits = self.final_layer(dec_out)  # [B, L_tgt, V_tgt]
+
+        # 合并所有 router_logits
+        router_logits = []
+        if enc_router_logits:
+            router_logits.extend(enc_router_logits)
+        if dec_router_logits:
+            router_logits.extend(dec_router_logits)
+
+        if router_logits:
+            return logits, attention_weights, router_logits
+        return logits, attention_weights
 
 
 class CustomizedSchedule(_LRScheduler):
@@ -1278,13 +1185,52 @@ def loss_function(real, pred, router_logits=None, moe_config=None):
     if router_logits is not None and moe_config is not None:
         aux_loss = load_balancing_loss_func(
             router_logits,
-            num_experts=moe_config.num_experts,
+            num_experts=moe_config.n_routed_experts,
             top_k=moe_config.num_experts_per_tok
         )
         total_loss = main_loss + moe_config.router_aux_loss_coef * aux_loss
         return total_loss
 
     return main_loss
+
+
+def load_balancing_loss_func(gate_logits, num_experts: int = None, top_k=2) -> float:
+    """计算负载均衡损失"""
+    if gate_logits is None or len(gate_logits) == 0:
+        return 0
+
+    # 如果 gate_logits 是列表，需要合并所有层的 router_logits
+    if isinstance(gate_logits, list):
+        if len(gate_logits) == 0:
+            return 0
+        # 合并所有层的 router_logits
+        compute_device = gate_logits[0].device
+        gate_logits = torch.cat([gate.to(compute_device) for gate in gate_logits], dim=0)
+    elif isinstance(gate_logits, tuple):
+        compute_device = gate_logits[0].device
+        gate_logits = torch.cat([gate.to(compute_device) for gate in gate_logits], dim=0)
+
+    # 确保 gate_logits 是 2D 张量 [batch_size * seq_len, num_experts]
+    if gate_logits.dim() == 3:
+        batch_size, seq_len, num_experts_dim = gate_logits.shape
+        gate_logits = gate_logits.view(-1, num_experts_dim)
+
+    routing_weights, selected_experts = torch.topk(gate_logits, top_k, dim=-1)
+    routing_weights = routing_weights.softmax(dim=-1)
+
+    if selected_experts.dtype != torch.int64:
+        selected_experts = selected_experts.to(torch.int64)
+
+    if len(selected_experts.shape) == 2:
+        selected_experts = selected_experts.unsqueeze(2)
+
+    expert_mask = torch.nn.functional.one_hot(selected_experts, num_experts)
+    expert_mask = torch.max(expert_mask, axis=-2).values
+    expert_mask = expert_mask.to(torch.float32)
+    tokens_per_group_and_expert = torch.mean(expert_mask, axis=-2)
+
+    router_prob_per_group_and_expert = torch.mean(routing_weights, axis=-1)
+    return torch.mean(tokens_per_group_and_expert * router_prob_per_group_and_expert.unsqueeze(-1)) * (num_experts ** 2)
 
 
 def create_masks(
@@ -1362,22 +1308,21 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     )
     enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
 
-    if transformer.use_moe:
-        logits, _, router_logits = transformer(
-            inp, tar_inp,
-            src_mask=enc_pad_mask,
-            tgt_mask=dec_mask,
-            enc_dec_mask=enc_dec_mask
-        )
-        loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config)
+    transformer_output = transformer(
+        inp, tar_inp,
+        src_mask=enc_pad_mask,
+        tgt_mask=dec_mask,
+        enc_dec_mask=enc_dec_mask
+    )
+
+    # 处理 MoE 输出
+    if isinstance(transformer_output, tuple) and len(transformer_output) == 3:
+        logits, _, router_logits = transformer_output
     else:
-        logits, _ = transformer(
-            inp, tar_inp,
-            src_mask=enc_pad_mask,
-            tgt_mask=dec_mask,
-            enc_dec_mask=enc_dec_mask
-        )
-        loss = loss_function(tar_real, logits)
+        logits, _ = transformer_output
+        router_logits = None
+
+    loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config)
 
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
@@ -1401,12 +1346,19 @@ def train_model(
         log_every: int = 100,
         ckpt_dir: str = "checkpoints",
         ckpt_prefix: str = "ckpt",
+        tensorboard_dir: str = "runs",
         moe_config=None,
 ):
     os.makedirs(ckpt_dir, exist_ok=True)
+    os.makedirs(tensorboard_dir, exist_ok=True)
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
+
+    # 初始化 TensorBoard writer
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    writer = SummaryWriter(os.path.join(tensorboard_dir, f"transformer_rope_{timestamp}"))
+    logger.info(f"TensorBoard logs will be saved to: {os.path.join(tensorboard_dir, f'transformer_rope_{timestamp}')}")
 
     train_loss_meter = AverageMeter("train_loss")
     train_acc_meter = AverageMeter("train_accuracy")
@@ -1428,27 +1380,52 @@ def train_model(
                 train_acc_meter.update(acc_val, 1)
 
                 global_step += 1
+
+                # 记录到 TensorBoard
+                writer.add_scalar('Train/Loss', loss_val, global_step)
+                writer.add_scalar('Train/Accuracy', acc_val, global_step)
+
+                # 记录学习率
+                if scheduler is not None:
+                    current_lr = scheduler.get_last_lr()[0]
+                    writer.add_scalar('Train/Learning_Rate', current_lr, global_step)
+                else:
+                    current_lr = optimizer.param_groups[0]['lr']
+                    writer.add_scalar('Train/Learning_Rate', current_lr, global_step)
+
                 if batch_idx % log_every == 0:
                     logger.info(
                         f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step}"
                         f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}"
                     )
-                    save_ckpt(
-                        model=model,
-                        optimizer=optimizer,
-                        scheduler=scheduler,
-                        epoch=epoch + 1,
-                        step=global_step,
-                        ckpt_dir=ckpt_dir,
-                        tag="latest"
-                    )
+
+            # 记录每个 epoch 的平均指标到 TensorBoard
+            writer.add_scalar('Epoch/Train_Loss', train_loss_meter.avg, epoch + 1)
+            writer.add_scalar('Epoch/Train_Accuracy', train_acc_meter.avg, epoch + 1)
+            writer.add_scalar('Epoch/Time', time.time() - start, epoch + 1)
 
             logger.info(f"Epoch {epoch + 1} Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}")
             logger.info(f"Time taken for 1 epoch: {time.time() - start:.2f} secs\n")
 
             # 每个epoch结束后进行验证集评测
             validate_loss, validate_acc = evaluate_on_val(model, val_loader, device)
+
+            # 记录验证指标到 TensorBoard
+            writer.add_scalar('Epoch/Validation_Loss', validate_loss, epoch + 1)
+            writer.add_scalar('Epoch/Validation_Accuracy', validate_acc, epoch + 1)
+
             logger.info(f"Validation - Epoch {epoch + 1} Loss: {validate_loss:.4f}, Accuracy: {validate_acc:.4f}\n")
+
+            # 每个epoch结束后保存checkpoint
+            save_ckpt(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                epoch=epoch + 1,
+                step=global_step,
+                ckpt_dir=ckpt_dir,
+                tag="latest"
+            )
 
         except Exception as e:
             logger.info(f"报错啦!!! 报错信息: {e}")
@@ -1460,6 +1437,10 @@ def train_model(
                 step=global_step,
                 tag="error"
             )
+
+    # 训练结束后关闭 TensorBoard writer
+    writer.close()
+    logger.info("TensorBoard logging completed. Use 'tensorboard --logdir=runs' to view the logs.")
 
 
 @torch.no_grad()
@@ -1689,21 +1670,12 @@ def load_ckpt(model, optimizer=None, scheduler=None, ckpt_dir="checkpoints", dev
     if not os.path.exists(latest):
         logger.info("⚠️ No checkpoint found, training from scratch.")
         return 0, 0
-
-    try:
-        ckpt = torch.load(latest, map_location=device)
-        model.load_state_dict(ckpt["model"])
-        if optimizer: optimizer.load_state_dict(ckpt["optim"])
-        if scheduler and ckpt["sched"]: scheduler.load_state_dict(ckpt["sched"])
-        logger.info(f"✅ checkpoint loaded (epoch={ckpt['epoch']}, step={ckpt['step']})")
-        return ckpt["epoch"], ckpt["step"]
-    except RuntimeError as e:
-        if "size mismatch" in str(e) or "Missing key" in str(e):
-            logger.warning(f"⚠️ Checkpoint incompatible with current model: {e}")
-            logger.info("Starting training from scratch...")
-            return 0, 0
-        else:
-            raise e
+    ckpt = torch.load(latest, map_location=device)
+    model.load_state_dict(ckpt["model"])
+    if optimizer: optimizer.load_state_dict(ckpt["optim"])
+    if scheduler and ckpt["sched"]: scheduler.load_state_dict(ckpt["sched"])
+    logger.info(f"✅ checkpoint loaded (epoch={ckpt['epoch']}, step={ckpt['step']})")
+    return ckpt["epoch"], ckpt["step"]
 
 
 if __name__ == "__main__":
@@ -1713,7 +1685,7 @@ if __name__ == "__main__":
     train_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_train.csv"
     val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
-    checkpoint_dir = './checkpoints'
+    checkpoint_dir = './checkpoints_rope_moe'
 
     # 构建词表参数
     vocab_size = 2 ** 13  # 词表大小
@@ -1750,6 +1722,15 @@ if __name__ == "__main__":
         hidden_act="silu",
         router_aux_loss_coef=0.001,
         use_moe=use_moe,
+        n_routed_experts=8,
+        routed_scaling_factor=1.0,
+        scoring_func="sigmoid",
+        topk_method="noaux_tc",
+        n_group=1,
+        topk_group=1,
+        norm_topk_prob=True,
+        n_shared_experts=None,
+        moe_intermediate_size=dff,
     )
 
     # 1. 检查 PyTorch 环境信息、GPU 状态，以及常用依赖库版本；
@@ -1807,24 +1788,6 @@ if __name__ == "__main__":
     input_vocab_size = pt_tokenizer.vocab_size
     target_vocab_size = en_tokenizer.vocab_size
 
-    # 创建不带 MoE 的模型用于参数对比
-    model_without_moe = Transformer(
-        num_layers=num_layers,
-        input_vocab_size=input_vocab_size,
-        target_vocab_size=target_vocab_size,
-        max_length=max_length,
-        d_model=d_model,
-        num_heads=num_heads,
-        dff=dff,
-        rate=dropout_rate,
-        src_padding_idx=pt_tokenizer.pad_token_id if hasattr(pt_tokenizer, "pad_token_id") else None,
-        tgt_padding_idx=en_tokenizer.pad_token_id if hasattr(en_tokenizer, "pad_token_id") else None,
-        use_rope=True,
-        use_moe=False,
-        moe_config=None,
-    )
-
-    # 创建带 MoE 的模型
     model = Transformer(
         num_layers=num_layers,
         input_vocab_size=input_vocab_size,
@@ -1841,60 +1804,76 @@ if __name__ == "__main__":
         moe_config=moe_config,
     )
 
+    # 创建不带 MoE 的模型用于参数对比
+    model_no_moe = Transformer(
+        num_layers=num_layers,
+        input_vocab_size=input_vocab_size,
+        target_vocab_size=target_vocab_size,
+        max_length=max_length,
+        d_model=d_model,
+        num_heads=num_heads,
+        dff=dff,
+        rate=dropout_rate,
+        src_padding_idx=pt_tokenizer.pad_token_id if hasattr(pt_tokenizer, "pad_token_id") else None,
+        tgt_padding_idx=en_tokenizer.pad_token_id if hasattr(en_tokenizer, "pad_token_id") else None,
+        use_rope=True,
+        use_moe=False,
+        moe_config=None,
+    )
 
-    # 计算参数数量对比
+
+    # 参数统计函数
     def count_parameters(model):
-        """计算模型参数数量"""
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         return total_params, trainable_params
 
 
     # 不带 MoE 的参数数量
-    total_params_without_moe, trainable_params_without_moe = count_parameters(model_without_moe)
+    no_moe_total, no_moe_trainable = count_parameters(model_no_moe)
 
     # 带 MoE 的参数数量
-    total_params_with_moe, trainable_params_with_moe = count_parameters(model)
+    moe_total, moe_trainable = count_parameters(model)
 
     # 打印参数对比
     logger.info("=" * 80)
     logger.info("🔍 模型参数对比分析")
     logger.info("=" * 80)
     logger.info(f"📊 不带 MoE 的模型:")
-    logger.info(f"   总参数数量: {total_params_without_moe:,}")
-    logger.info(f"   可训练参数: {trainable_params_without_moe:,}")
+    logger.info(f"   总参数: {no_moe_total:,}")
+    logger.info(f"   可训练参数: {no_moe_trainable:,}")
     logger.info(f"📊 带 MoE 的模型:")
-    logger.info(f"   总参数数量: {total_params_with_moe:,}")
-    logger.info(f"   可训练参数: {trainable_params_with_moe:,}")
+    logger.info(f"   总参数: {moe_total:,}")
+    logger.info(f"   可训练参数: {moe_trainable:,}")
 
     # 计算参数增长
-    param_increase = total_params_with_moe - total_params_without_moe
-    param_increase_ratio = (param_increase / total_params_without_moe) * 100
-
+    param_increase = moe_total - no_moe_total
+    param_increase_ratio = (param_increase / no_moe_total) * 100
     logger.info(f"📈 参数增长:")
-    logger.info(f"   绝对增长: +{param_increase:,} 参数")
+    logger.info(f"   绝对增长: +{param_increase:,}")
     logger.info(f"   相对增长: +{param_increase_ratio:.2f}%")
 
     # MoE 配置信息
     if use_moe:
         logger.info(f"🔧 MoE 配置:")
         logger.info(f"   专家数量: {moe_config.num_experts}")
-        logger.info(f"   每 token 专家数: {moe_config.num_experts_per_tok}")
-        logger.info(f"   激活函数: {moe_config.hidden_act}")
-        logger.info(f"   辅助损失系数: {moe_config.router_aux_loss_coef}")
+        logger.info(f"   每 token 激活专家: {moe_config.num_experts_per_tok}")
+        logger.info(f"   路由专家数量: {moe_config.n_routed_experts}")
 
         # 计算 MoE 相关参数
-        moe_params_per_expert = moe_config.hidden_size * moe_config.intermediate_size * 3  # w1, w2, w3
-        total_moe_params = moe_params_per_expert * moe_config.num_experts * num_layers * 2  # encoder + decoder
+        moe_params_per_expert = dff * d_model * 2  # 每个专家的参数（简化计算）
+        total_moe_params = moe_config.n_routed_experts * moe_params_per_expert
         logger.info(f"   MoE 专家参数: {moe_params_per_expert:,} 每专家")
         logger.info(f"   总 MoE 参数: {total_moe_params:,}")
 
     logger.info("=" * 80)
 
     # 删除对比模型以节省内存
-    del model_without_moe
-    assert 1 == 2
+    del model_no_moe
+    import gc
 
+    gc.collect()
+    assert 1 == 0
     ##############################【Test - optimizer | scheduler 】##############################
     # # 6. 自定义学习率和优化器
     # optimizer = optim.Adam(model.parameters(),
@@ -1966,7 +1945,8 @@ if __name__ == "__main__":
             log_every=100,
             ckpt_dir="checkpoints",
             ckpt_prefix="transformer",
-            moe_config=moe_config,
+            tensorboard_dir="runs",  # TensorBoard 日志目录
+            moe_config=moe_config,  # MoE 配置
         )
     else:
         start_epoch, global_step = load_ckpt(model, optimizer, scheduler, device=device)
