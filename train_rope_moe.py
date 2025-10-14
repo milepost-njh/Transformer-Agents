@@ -1328,14 +1328,19 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
 
     loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config)
 
+    # 检测NaN或Inf损失
+    if not torch.isfinite(loss):
+        logger.error(f"Loss is {loss.item()}, skipping this batch")
+        return 0.0, 0.0
+
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
 
-    # 改进的梯度裁剪 - 降低阈值并监控梯度范数
-    grad_norm = torch.nn.utils.clip_grad_norm_(transformer.parameters(), max_norm=0.5)
+    # MoE模型需要更宽松的梯度裁剪阈值
+    grad_norm = torch.nn.utils.clip_grad_norm_(transformer.parameters(), max_norm=1.0)
 
-    # 只在梯度范数非常大时才记录警告
-    if grad_norm > 4.0:
+    # 只在梯度范数非常大时才记录警告（提高阈值）
+    if grad_norm > 10.0:
         logger.warning(f"Very large gradient norm detected: {grad_norm:.4f}")
 
     optimizer.step()
@@ -1734,7 +1739,7 @@ if __name__ == "__main__":
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
-    learning_rate = 1e-3
+    learning_rate = 5e-4  # 降低学习率以稳定MoE训练
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
@@ -1754,7 +1759,7 @@ if __name__ == "__main__":
         hidden_size=d_model,
         intermediate_size=dff,
         hidden_act="silu",
-        router_aux_loss_coef=0.001,
+        router_aux_loss_coef=0.01,  # 增加辅助损失权重以促进负载均衡（从0.001增加到0.01）
         use_moe=use_moe,
         n_routed_experts=8,
         routed_scaling_factor=1.0,
@@ -1928,13 +1933,13 @@ if __name__ == "__main__":
         weight_decay=weight_decay
     )
 
-    warmup_steps = int(0.1 * num_training_steps)  # 10% 步数用作 warmup
-    # 获取学习率调度器
+    warmup_steps = int(0.15 * num_training_steps)  # 15% 步数用作 warmup（MoE需要更长warmup）
+    # 获取学习率调度器 - 使用更激进的衰减
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
         num_warmup_steps=warmup_steps,
         num_training_steps=num_training_steps,
-        num_cycles=0.5,
+        num_cycles=0.5,  # 保持0.5个周期，让学习率充分衰减
     )
 
     # 自定义学习率
