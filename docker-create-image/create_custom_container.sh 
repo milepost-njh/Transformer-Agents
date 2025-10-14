@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# script parameters
+docker_run_name=$1
+docker_image_name=$2
+docker_image_version=$3
+ssh_port=$4
+jupyter_port=$5
+tensorboard=$6
+
+# docker run --gpus all -itd \
+
+docker run --gpus all --cpus 48 --shm-size 16G --memory 500gb -itd \
+  -p ${ssh_port}:22 \
+  -p ${jupyter_port}:8888 \
+  -p ${tensorboard}:6006 \
+  -v /etc/localtime:/etc/localtime \
+  -v /home/nijiahui:/home/nijiahui \
+  --name ${docker_run_name} \
+  -e JUPYTER_PASSWORD="123456" \
+  -e JUPYTER_PORT=8888 \
+  -e ROOT_PASS="123456" \
+  ${docker_image_name}:${docker_image_version}
+
+# bash create_custom_container.sh pytorch_ngc_2505  nvcr.io/nvidia/pytorch  25.05-py3  20004 20005 20006
