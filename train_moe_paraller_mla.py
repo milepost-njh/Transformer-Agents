@@ -20,24 +20,7 @@ from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
-# 从本地模块导入调度器工厂函数
-try:
-    from schedulers import create_scheduler
-except ImportError:
-    # 如果本地模块不可用，回退到transformers
-    from transformers import get_cosine_schedule_with_warmup
-    def create_scheduler(scheduler_type, optimizer, num_training_steps, **kwargs):
-        if scheduler_type == "transformers_cosine":
-            warmup_steps = int(kwargs.get("warmup_ratio", 0.15) * num_training_steps)
-            return get_cosine_schedule_with_warmup(
-                optimizer=optimizer,
-                num_warmup_steps=warmup_steps,
-                num_training_steps=num_training_steps,
-                num_cycles=kwargs.get("num_cycles", 0.5),
-            )
-        else:
-            raise ValueError(f"调度器类型 {scheduler_type} 在没有本地调度器模块时不可用")
-    
+from transformers import get_cosine_schedule_with_warmup
 from datetime import datetime
 from loguru import logger
 from torch.utils.tensorboard import SummaryWriter
@@ -1366,12 +1349,7 @@ def plot_customized_lr_curve(optimizer, scheduler, total_steps: int, label: str 
     """
     lrs = []
     for step in range(total_steps):
-        # 为绘图处理不同类型的调度器
-        if hasattr(scheduler, '_scheduler'):  # ReduceLROnPlateauWrapper
-            # 对于ReduceLROnPlateau，使用模拟loss值进行绘图
-            scheduler.step(1.0)
-        else:
-            scheduler.step()
+        scheduler.step()
         lr = scheduler.get_last_lr()[0]
         lrs.append(lr)
 
@@ -1588,13 +1566,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
 
     optimizer.step()
     if scheduler is not None:
-        # 处理不同类型的调度器
-        if hasattr(scheduler, '_scheduler'):  # ReduceLROnPlateauWrapper
-            # 对于ReduceLROnPlateau，需要传入验证loss
-            # 现在我们在训练时跳过step()，在验证时处理
-            pass
-        else:
-            scheduler.step()
+        scheduler.step()
 
     acc = token_accuracy(tar_real, logits, pad_id=TGT_PAD_ID)
     return loss.item(), acc
@@ -1714,10 +1686,6 @@ def train_model(
             writer.add_scalar('Epoch/Validation_Accuracy', validate_acc, epoch + 1)
 
             logger.info(f"Validation - Epoch {epoch + 1} Loss: {validate_loss:.4f}, Accuracy: {validate_acc:.4f}\n")
-            
-            # 处理ReduceLROnPlateau调度器
-            if scheduler is not None and hasattr(scheduler, '_scheduler'):
-                scheduler.step(validate_loss)
 
             # 每个epoch结束后保存checkpoint
             save_ckpt(
@@ -2044,15 +2012,6 @@ if __name__ == "__main__":
     learning_rate = 1e-4  # 进一步降低学习率以稳定MoE训练，防止梯度爆炸
     betas = (0.9, 0.999)
     eps = 1e-8
-    
-    # 调度器配置
-    # scheduler_type = "transformers_cosine"  # 选项: "transformers_cosine", "cosine_warmup", "onecycle", "reduce_on_plateau", "moe_cosine"
-    scheduler_type = "moe_cosine"
-    # scheduler_type = "reduce_on_plateau"
-    # scheduler_type = "onecycle"
-    # scheduler_type = "cosine_warmup"
-    
-    warmup_ratio = 0.15  # 15%的训练步数用于预热
     weight_decay = 0.01
 
     # 模型结构
@@ -2329,21 +2288,13 @@ if __name__ == "__main__":
         weight_decay=weight_decay
     )
 
-    # 创建学习率调度器
-    logger.info(f"创建调度器: {scheduler_type}")
-    scheduler = create_scheduler(
-        scheduler_type=scheduler_type,
-        optimizer=optimizer,
+    warmup_steps = int(0.15 * num_training_steps)  # 15% 步数用作 warmup（MoE需要更长warmup）
+    # 获取学习率调度器 - 使用更激进的衰减
+    scheduler = get_cosine_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=warmup_steps,
         num_training_steps=num_training_steps,
-        learning_rate=learning_rate,
-        warmup_ratio=warmup_ratio,
         num_cycles=0.5,  # 保持0.5个周期，让学习率充分衰减
-        # 特定调度器的额外参数
-        div_factor=25.0,  # OneCycleLR使用
-        final_div_factor=1e4,  # OneCycleLR使用
-        patience=3,  # ReduceLROnPlateau使用
-        factor=0.5,  # ReduceLROnPlateau使用
-        min_lr=1e-6,  # 最小学习率
     )
 
     # 自定义学习率
@@ -2363,15 +2314,7 @@ if __name__ == "__main__":
 
     # 6.2 【测试】 打印自定义学习率曲线
     plot_customized_lr_curve(optimizer, scheduler, total_steps=num_training_steps,
-                             label=f"{scheduler_type}, d_model={d_model}, warmup_ratio={warmup_ratio}")
-    
-    # 记录调度器配置
-    logger.info(f"调度器配置:")
-    logger.info(f"  类型: {scheduler_type}")
-    logger.info(f"  学习率: {learning_rate}")
-    logger.info(f"  预热比例: {warmup_ratio}")
-    logger.info(f"  总训练步数: {num_training_steps}")
-    logger.info(f"  预热步数: {int(warmup_ratio * num_training_steps)}")
+                             label=f"d_model={d_model}, warmup={warmup_steps}")
 
     ##############################【Test - optimizer | scheduler 】##############################
 
