@@ -229,11 +229,23 @@ class TransformersCosineWarmup:
         )
         self.optimizer = optimizer
     
-    def step(self) -> None:
+    def step(self, metrics=None) -> None:
+        """
+        支持带参数和不带参数的step调用
+        对于transformers调度器，忽略metrics参数
+        """
         self._scheduler.step()
     
     def get_last_lr(self) -> List[float]:
         return self._scheduler.get_last_lr()
+    
+    def state_dict(self) -> dict:
+        """返回调度器状态字典"""
+        return self._scheduler.state_dict()
+    
+    def load_state_dict(self, state_dict: dict) -> None:
+        """加载调度器状态字典"""
+        self._scheduler.load_state_dict(state_dict)
 
 
 def create_scheduler(
