@@ -1,7 +1,5 @@
 # TensorBoard logs and runs
 runs/
-*.log
-logs/
 
 # Python cache
 __pycache__/
@@ -104,4 +102,4 @@ runs/
 tensorflow_datasets/
 tok_en/
 tok_pt/
-logs/
+start_git.sh
