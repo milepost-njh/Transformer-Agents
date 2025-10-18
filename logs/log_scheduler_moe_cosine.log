@@ -1,0 +1,347 @@
+2025-10-16 09:55:19.220048: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-10-16 09:55:19.283384: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-10-16 09:55:20.296953: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:174 - ===== PyTorch & 系统信息 =====
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:175 - torch.__version__:
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:176 - python version:
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:178 - 
+===== 常用库版本 =====
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:180 - matplotlib
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:180 - numpy
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:180 - pandas
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:180 - torch
+2025-10-16 09:55:21.811 | INFO     | __main__:check_env:182 - 
+===== GPU 检查 =====
+2025-10-16 09:55:22.148 | INFO     | __main__:check_env:183 - torch.cuda.is_available():
+2025-10-16 09:55:22.148 | INFO     | __main__:check_env:184 - torch.version.cuda:
+2025-10-16 09:55:22.150 | INFO     | __main__:check_env:186 - cudnn version:
+2025-10-16 09:55:22.200 | INFO     | __main__:check_env:192 - GPU count:
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:193 - Current device id:
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:194 - GPU name:
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:195 - bfloat16 supported:
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:199 - GPU 0: NVIDIA L20
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:199 - GPU 1: NVIDIA L20
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:199 - GPU 2: NVIDIA L20
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:199 - GPU 3: NVIDIA L20
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:199 - GPU 4: NVIDIA L20
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:199 - GPU 5: NVIDIA L20
+2025-10-16 09:55:22.204 | INFO     | __main__:check_env:213 - 
+推荐使用 device: Cuda;
+2025-10-16 09:55:22.204 | INFO     | __main__:<module>:2098 - 实际使用设备:
+2025-10-16 09:55:22.204 | INFO     | __main__:setup_multi_gpu:124 - 检测到 6 张GPU
+2025-10-16 09:55:22.204 | INFO     | __main__:setup_multi_gpu:127 - 启用多卡训练，使用 6 张GPU
+2025-10-16 09:55:22.205 | INFO     | __main__:<module>:2102 - 多卡训练设置: use_multi_gpu=True, gpu_count=6
+2025-10-16 09:55:22.205 | INFO     | __main__:load_translation_dataset:229 - 开始加载数据...
+2025-10-16 09:55:25.258 | INFO     | __main__:load_translation_dataset:240 - 数据集类型:
+2025-10-16 09:55:25.259 | INFO     | __main__:load_translation_dataset:241 - DatasetDict({
+    train: Dataset({
+        features: ['pt', 'en'],
+        num_rows: 176959
+    })
+    validation: Dataset({
+        features: ['pt', 'en'],
+        num_rows: 19663
+    })
+})
+2025-10-16 09:55:25.259 | INFO     | __main__:load_translation_dataset:245 - 示例数据 -> pt: por | en: en
+2025-10-16 09:55:25.259 | INFO     | __main__:<module>:2109 - 训练集样本数:
+2025-10-16 09:55:25.259 | INFO     | __main__:<module>:2110 - 验证集样本数:
+2025-10-16 09:55:25.259 | INFO     | __main__:<module>:2114 - 开始构建 Tokenizer...
+
+
+
+
+
+
+2025-10-16 09:55:32.866 | INFO     | __main__:train_and_load_tokenizers:326 - pt vocab size:
+2025-10-16 09:55:32.867 | INFO     | __main__:train_and_load_tokenizers:327 - en vocab size:
+2025-10-16 09:55:32.870 | INFO     | __main__:test_tokenizers:347 - === English Tokenizer Test ===
+2025-10-16 09:55:32.870 | INFO     | __main__:test_tokenizers:349 - [EN] Tokenized IDs: [56, 86, 1102, 7188, 962, 299, 5984, 18]
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:356 - [EN] Decoded string: Transformer is awesome.
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:359 - [EN] id --> decoded([id])  |  id --> token(str)
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:367 -     56 --> 'T'  |      56 --> 'T'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:367 -     86 --> 'r'  |      86 --> 'r'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:367 -   1102 --> 'ans'  |    1102 --> 'ans'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:367 -   7188 --> 'for'  |    7188 --> 'for'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:367 -    962 --> 'mer'  |     962 --> 'mer'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:367 -    299 --> ' is'  |     299 --> 'Ġis'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:367 -   5984 --> ' awesome'  |    5984 --> 'Ġawesome'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:367 -     18 --> '.'  |      18 --> '.'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:369 - 
+------------------------------------------------------------
+
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:372 - === Portuguese Tokenizer Test ===
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:374 - [PT] Tokenized IDs: [56, 415, 87, 74, 735, 269, 87, 551, 1335, 86, 3499, 18]
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:381 - [PT] Decoded string: Transformers são incríveis.
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:384 - [PT] id --> decoded([id])  |  id --> token(str)
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -     56 --> 'T'  |      56 --> 'T'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -    415 --> 'ran'  |     415 --> 'ran'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -     87 --> 's'  |      87 --> 's'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -     74 --> 'f'  |      74 --> 'f'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -    735 --> 'orm'  |     735 --> 'orm'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -    269 --> 'er'  |     269 --> 'er'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -     87 --> 's'  |      87 --> 's'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -    551 --> ' são'  |     551 --> 'ĠsÃ£o'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -   1335 --> ' inc'  |    1335 --> 'Ġinc'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -     86 --> 'r'  |      86 --> 'r'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -   3499 --> 'íveis'  |    3499 --> 'ÃŃveis'
+2025-10-16 09:55:32.871 | INFO     | __main__:test_tokenizers:392 -     18 --> '.'  |      18 --> '.'
+2025-10-16 09:55:32.871 | INFO     | __main__:<module>:2131 - 开始构建 batch data loader...
+2025-10-16 09:55:32.871 | INFO     | __main__:build_dataloaders:432 - 多卡训练优化: batch_size 64 -> 384, num_workers 4 -> 8
+Token indices sequence length is longer than the specified maximum sequence length for this model (70 > 64). Running this sequence through the model will result in indexing errors
+2025-10-16 09:55:52.430 | INFO     | __main__:build_filtered_pairs:458 - [filter] kept=176957, skipped=2, max_length=64
+2025-10-16 09:55:54.475 | INFO     | __main__:build_filtered_pairs:458 - [filter] kept=19663, skipped=0, max_length=64
+2025-10-16 09:55:55.214 | INFO     | __main__:test_dataloaders:530 - === Train Loader Batch Shapes ===
+2025-10-16 09:55:55.214 | INFO     | __main__:test_dataloaders:532 - pt_input_ids         (384, 23)
+2025-10-16 09:55:55.214 | INFO     | __main__:test_dataloaders:532 - pt_attention_mask    (384, 23)
+2025-10-16 09:55:55.214 | INFO     | __main__:test_dataloaders:532 - en_input_ids         (384, 21)
+2025-10-16 09:55:55.214 | INFO     | __main__:test_dataloaders:532 - en_attention_mask    (384, 21)
+2025-10-16 09:55:55.214 | INFO     | __main__:test_dataloaders:536 - 
+=== Validation Loader Example ===
+2025-10-16 09:55:55.324 | INFO     | __main__:test_dataloaders:538 - pt_input_ids:     
+2025-10-16 09:55:55.324 | INFO     | __main__:test_dataloaders:539 - pt_attention_mask:
+2025-10-16 09:55:58.991 | INFO     | __main__:<module>:2201 - ✅ Applied improved weight initialization
+2025-10-16 09:55:58.991 | INFO     | __main__:wrap_model_for_multi_gpu:141 - 使用DataParallel包装模型，GPU数量: 6
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2264 - ================================================================================
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2265 - 🔍 模型参数对比分析
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2266 - ================================================================================
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2267 - 📊 基准模型 (不带 MoE, 带 MLA):
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2268 -    总参数: 63,176,448
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2269 -    可训练参数: 63,176,448
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2270 - 📊 对比模型 (带 MoE, 不带 MLA):
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2271 -    总参数: 440,565,888
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2272 -    可训练参数: 440,565,888
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2273 - 📊 最终模型 (带 MoE + 带 MLA):
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2274 -    总参数: 432,299,904
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2275 -    可训练参数: 432,299,904
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2278 - 📈 MoE 带来的参数增长 (对比基准模型):
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2280 -    绝对增长: +377,389,440
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2282 -    相对增长: +597.36%
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2285 - 💡 MLA 带来的参数变化 (对比不带 MLA 的 MoE 模型):
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2287 -    参数减少: 8,265,984
+2025-10-16 09:56:01.461 | INFO     | __main__:<module>:2289 -    参数节省比例: 1.88%
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2290 -    说明: 添加 MLA 后，相比不带 MLA 的模型减少了 8,265,984 个参数
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2294 - 🔧 MoE 配置:
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2295 -    专家数量: 8
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2296 -    每 token 激活专家: 2
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2297 -    路由专家数量: 8
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2302 -    MoE 专家参数: 2,097,152 每专家
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2303 -    总 MoE 参数: 16,777,216
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2307 - 🔧 MLA 配置:
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2308 -    使用 MLA (Multi-head Latent Attention): True
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2309 -    Q LoRA Rank: 256
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2310 -    KV LoRA Rank: 128
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2311 -    通过低秩分解减少注意力参数量
+2025-10-16 09:56:01.462 | INFO     | __main__:<module>:2313 - ================================================================================
+2025-10-16 09:56:02.057 | INFO     | __main__:<module>:2343 - 创建调度器: moe_cosine
+2025-10-16 09:56:02.057 | INFO     | __main__:<module>:2378 - ⚠️ 已跳过学习率曲线绘图以避免破坏scheduler状态
+2025-10-16 09:56:02.057 | INFO     | __main__:<module>:2381 - 调度器配置:
+2025-10-16 09:56:02.057 | INFO     | __main__:<module>:2382 -   类型: moe_cosine
+2025-10-16 09:56:02.058 | INFO     | __main__:<module>:2383 -   学习率: 0.0001
+2025-10-16 09:56:02.058 | INFO     | __main__:<module>:2384 -   预热比例: 0.15
+2025-10-16 09:56:02.058 | INFO     | __main__:<module>:2385 -   总训练步数: 9220
+2025-10-16 09:56:02.058 | INFO     | __main__:<module>:2386 -   预热步数: 1383
+2025-10-16 09:56:02.058 | INFO     | __main__:<module>:2396 - learning_rate:0.0001
+2025-10-16 09:56:03.185 | INFO     | __main__:train_model:1637 - TensorBoard logs will be saved to: runs/transformer_rope_20251016_095603
+2025-10-16 09:56:21.272 | INFO     | __main__:train_model:1706 - Epoch 1 Batch 0 global_step 1Loss 4.0146 Accuracy 0.0000 GPU0内存: 6.46GB/8.52GB
+2025-10-16 09:57:52.937 | INFO     | __main__:train_model:1706 - Epoch 1 Batch 100 global_step 101Loss 3.4427 Accuracy 0.1039 GPU0内存: 6.47GB/14.22GB
+2025-10-16 09:59:18.123 | INFO     | __main__:train_model:1706 - Epoch 1 Batch 200 global_step 201Loss 3.1492 Accuracy 0.1638 GPU0内存: 6.47GB/16.10GB
+2025-10-16 10:00:45.084 | INFO     | __main__:train_model:1706 - Epoch 1 Batch 300 global_step 301Loss 2.9021 Accuracy 0.2103 GPU0内存: 6.47GB/18.11GB
+2025-10-16 10:02:09.764 | INFO     | __main__:train_model:1706 - Epoch 1 Batch 400 global_step 401Loss 2.6575 Accuracy 0.2593 GPU0内存: 6.47GB/18.11GB
+2025-10-16 10:03:02.947 | INFO     | __main__:train_model:1716 - Epoch 1 Loss 2.5191 Accuracy 0.2878
+2025-10-16 10:03:02.948 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 419.76 secs
+
+2025-10-16 10:03:25.201 | INFO     | __main__:train_model:1726 - Validation - Epoch 1 Loss: 1.4339, Accuracy: 0.5071
+
+2025-10-16 10:03:36.422 | INFO     | __main__:train_model:1706 - Epoch 2 Batch 0 global_step 462Loss 1.8798 Accuracy 0.5048 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:05:02.601 | INFO     | __main__:train_model:1706 - Epoch 2 Batch 100 global_step 562Loss 1.3550 Accuracy 0.5329 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:06:27.934 | INFO     | __main__:train_model:1706 - Epoch 2 Batch 200 global_step 662Loss 1.2546 Accuracy 0.5609 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:07:54.233 | INFO     | __main__:train_model:1706 - Epoch 2 Batch 300 global_step 762Loss 1.1592 Accuracy 0.5855 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:09:19.734 | INFO     | __main__:train_model:1706 - Epoch 2 Batch 400 global_step 862Loss 1.0823 Accuracy 0.6083 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:10:11.086 | INFO     | __main__:train_model:1716 - Epoch 2 Loss 1.0417 Accuracy 0.6205
+2025-10-16 10:10:11.087 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 396.04 secs
+
+2025-10-16 10:10:33.365 | INFO     | __main__:train_model:1726 - Validation - Epoch 2 Loss: 0.7106, Accuracy: 0.7179
+
+2025-10-16 10:10:47.461 | INFO     | __main__:train_model:1706 - Epoch 3 Batch 0 global_step 923Loss 0.6665 Accuracy 0.7186 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:12:12.526 | INFO     | __main__:train_model:1706 - Epoch 3 Batch 100 global_step 1023Loss 0.6909 Accuracy 0.7314 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:13:38.418 | INFO     | __main__:train_model:1706 - Epoch 3 Batch 200 global_step 1123Loss 0.6555 Accuracy 0.7421 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:15:04.917 | INFO     | __main__:train_model:1706 - Epoch 3 Batch 300 global_step 1223Loss 0.6251 Accuracy 0.7509 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:16:30.313 | INFO     | __main__:train_model:1706 - Epoch 3 Batch 400 global_step 1323Loss 0.6009 Accuracy 0.7582 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:17:22.177 | INFO     | __main__:train_model:1716 - Epoch 3 Loss 0.5866 Accuracy 0.7625
+2025-10-16 10:17:22.177 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 396.02 secs
+
+2025-10-16 10:17:44.037 | INFO     | __main__:train_model:1726 - Validation - Epoch 3 Loss: 0.4687, Accuracy: 0.7946
+
+2025-10-16 10:17:57.603 | INFO     | __main__:train_model:1706 - Epoch 4 Batch 0 global_step 1384Loss 0.5330 Accuracy 0.8017 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:19:24.069 | INFO     | __main__:train_model:1706 - Epoch 4 Batch 100 global_step 1484Loss 0.4335 Accuracy 0.8133 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:20:49.714 | INFO     | __main__:train_model:1706 - Epoch 4 Batch 200 global_step 1584Loss 0.4233 Accuracy 0.8153 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:22:15.126 | INFO     | __main__:train_model:1706 - Epoch 4 Batch 300 global_step 1684Loss 0.4125 Accuracy 0.8174 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:23:40.394 | INFO     | __main__:train_model:1706 - Epoch 4 Batch 400 global_step 1784Loss 0.4026 Accuracy 0.8202 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:24:31.977 | INFO     | __main__:train_model:1716 - Epoch 4 Loss 0.3998 Accuracy 0.8217
+2025-10-16 10:24:31.977 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 395.66 secs
+
+2025-10-16 10:24:54.481 | INFO     | __main__:train_model:1726 - Validation - Epoch 4 Loss: 0.3689, Accuracy: 0.8262
+
+2025-10-16 10:25:08.183 | INFO     | __main__:train_model:1706 - Epoch 5 Batch 0 global_step 1845Loss 0.2696 Accuracy 0.8593 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:26:33.873 | INFO     | __main__:train_model:1706 - Epoch 5 Batch 100 global_step 1945Loss 0.3077 Accuracy 0.8531 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:27:59.252 | INFO     | __main__:train_model:1706 - Epoch 5 Batch 200 global_step 2045Loss 0.3047 Accuracy 0.8541 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:29:24.886 | INFO     | __main__:train_model:1706 - Epoch 5 Batch 300 global_step 2145Loss 0.3028 Accuracy 0.8546 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:30:49.459 | INFO     | __main__:train_model:1706 - Epoch 5 Batch 400 global_step 2245Loss 0.2995 Accuracy 0.8557 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:31:40.997 | INFO     | __main__:train_model:1716 - Epoch 5 Loss 0.2987 Accuracy 0.8562
+2025-10-16 10:31:40.997 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 394.20 secs
+
+2025-10-16 10:32:02.703 | INFO     | __main__:train_model:1726 - Validation - Epoch 5 Loss: 0.3178, Accuracy: 0.8435
+
+2025-10-16 10:32:15.976 | INFO     | __main__:train_model:1706 - Epoch 6 Batch 0 global_step 2306Loss 0.3194 Accuracy 0.8776 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:33:41.314 | INFO     | __main__:train_model:1706 - Epoch 6 Batch 100 global_step 2406Loss 0.2415 Accuracy 0.8799 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:35:06.988 | INFO     | __main__:train_model:1706 - Epoch 6 Batch 200 global_step 2506Loss 0.2398 Accuracy 0.8793 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:36:31.993 | INFO     | __main__:train_model:1706 - Epoch 6 Batch 300 global_step 2606Loss 0.2360 Accuracy 0.8794 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:37:57.247 | INFO     | __main__:train_model:1706 - Epoch 6 Batch 400 global_step 2706Loss 0.2351 Accuracy 0.8794 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:38:48.191 | INFO     | __main__:train_model:1716 - Epoch 6 Loss 0.2347 Accuracy 0.8798
+2025-10-16 10:38:48.191 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 393.52 secs
+
+2025-10-16 10:39:10.027 | INFO     | __main__:train_model:1726 - Validation - Epoch 6 Loss: 0.2876, Accuracy: 0.8550
+
+2025-10-16 10:39:23.672 | INFO     | __main__:train_model:1706 - Epoch 7 Batch 0 global_step 2767Loss 0.1595 Accuracy 0.9024 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:40:48.305 | INFO     | __main__:train_model:1706 - Epoch 7 Batch 100 global_step 2867Loss 0.1847 Accuracy 0.9010 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:42:12.922 | INFO     | __main__:train_model:1706 - Epoch 7 Batch 200 global_step 2967Loss 0.1859 Accuracy 0.9002 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:43:37.936 | INFO     | __main__:train_model:1706 - Epoch 7 Batch 300 global_step 3067Loss 0.1868 Accuracy 0.8998 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:45:02.780 | INFO     | __main__:train_model:1706 - Epoch 7 Batch 400 global_step 3167Loss 0.1862 Accuracy 0.8996 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:45:53.984 | INFO     | __main__:train_model:1716 - Epoch 7 Loss 0.1864 Accuracy 0.8996
+2025-10-16 10:45:53.984 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 391.61 secs
+
+2025-10-16 10:46:15.956 | INFO     | __main__:train_model:1726 - Validation - Epoch 7 Loss: 0.2705, Accuracy: 0.8625
+
+2025-10-16 10:46:29.411 | INFO     | __main__:train_model:1706 - Epoch 8 Batch 0 global_step 3228Loss 0.1270 Accuracy 0.9287 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:47:54.425 | INFO     | __main__:train_model:1706 - Epoch 8 Batch 100 global_step 3328Loss 0.1468 Accuracy 0.9190 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:49:19.824 | INFO     | __main__:train_model:1706 - Epoch 8 Batch 200 global_step 3428Loss 0.1467 Accuracy 0.9179 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:50:44.783 | INFO     | __main__:train_model:1706 - Epoch 8 Batch 300 global_step 3528Loss 0.1473 Accuracy 0.9176 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:52:10.045 | INFO     | __main__:train_model:1706 - Epoch 8 Batch 400 global_step 3628Loss 0.1467 Accuracy 0.9170 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:53:02.154 | INFO     | __main__:train_model:1716 - Epoch 8 Loss 0.1470 Accuracy 0.9167
+2025-10-16 10:53:02.154 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 394.10 secs
+
+2025-10-16 10:53:24.129 | INFO     | __main__:train_model:1726 - Validation - Epoch 8 Loss: 0.2608, Accuracy: 0.8670
+
+2025-10-16 10:53:37.390 | INFO     | __main__:train_model:1706 - Epoch 9 Batch 0 global_step 3689Loss 0.1070 Accuracy 0.9303 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:55:03.133 | INFO     | __main__:train_model:1706 - Epoch 9 Batch 100 global_step 3789Loss 0.1167 Accuracy 0.9337 GPU0内存: 6.46GB/20.46GB
+2025-10-16 10:56:27.809 | INFO     | __main__:train_model:1706 - Epoch 9 Batch 200 global_step 3889Loss 0.1168 Accuracy 0.9327 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:57:52.403 | INFO     | __main__:train_model:1706 - Epoch 9 Batch 300 global_step 3989Loss 0.1167 Accuracy 0.9322 GPU0内存: 6.47GB/20.46GB
+2025-10-16 10:59:17.943 | INFO     | __main__:train_model:1706 - Epoch 9 Batch 400 global_step 4089Loss 0.1159 Accuracy 0.9319 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:00:08.957 | INFO     | __main__:train_model:1716 - Epoch 9 Loss 0.1162 Accuracy 0.9317
+2025-10-16 11:00:08.957 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 392.90 secs
+
+2025-10-16 11:00:31.072 | INFO     | __main__:train_model:1726 - Validation - Epoch 9 Loss: 0.2573, Accuracy: 0.8714
+
+2025-10-16 11:00:42.913 | INFO     | __main__:train_model:1706 - Epoch 10 Batch 0 global_step 4150Loss 0.1158 Accuracy 0.9427 GPU0内存: 6.46GB/20.46GB
+2025-10-16 11:02:10.271 | INFO     | __main__:train_model:1706 - Epoch 10 Batch 100 global_step 4250Loss 0.0883 Accuracy 0.9466 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:03:36.896 | INFO     | __main__:train_model:1706 - Epoch 10 Batch 200 global_step 4350Loss 0.0894 Accuracy 0.9459 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:05:04.676 | INFO     | __main__:train_model:1706 - Epoch 10 Batch 300 global_step 4450Loss 0.0908 Accuracy 0.9449 GPU0内存: 6.46GB/20.46GB
+2025-10-16 11:06:29.801 | INFO     | __main__:train_model:1706 - Epoch 10 Batch 400 global_step 4550Loss 0.0910 Accuracy 0.9444 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:07:21.588 | INFO     | __main__:train_model:1716 - Epoch 10 Loss 0.0914 Accuracy 0.9442
+2025-10-16 11:07:21.589 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 400.04 secs
+
+2025-10-16 11:07:44.209 | INFO     | __main__:train_model:1726 - Validation - Epoch 10 Loss: 0.2546, Accuracy: 0.8752
+
+2025-10-16 11:07:57.989 | INFO     | __main__:train_model:1706 - Epoch 11 Batch 0 global_step 4611Loss 0.0706 Accuracy 0.9522 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:09:23.884 | INFO     | __main__:train_model:1706 - Epoch 11 Batch 100 global_step 4711Loss 0.0708 Accuracy 0.9570 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:10:50.741 | INFO     | __main__:train_model:1706 - Epoch 11 Batch 200 global_step 4811Loss 0.0706 Accuracy 0.9563 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:12:17.033 | INFO     | __main__:train_model:1706 - Epoch 11 Batch 300 global_step 4911Loss 0.0709 Accuracy 0.9556 GPU0内存: 6.46GB/20.46GB
+2025-10-16 11:13:43.121 | INFO     | __main__:train_model:1706 - Epoch 11 Batch 400 global_step 5011Loss 0.0718 Accuracy 0.9552 GPU0内存: 6.46GB/20.46GB
+2025-10-16 11:14:34.724 | INFO     | __main__:train_model:1716 - Epoch 11 Loss 0.0720 Accuracy 0.9548
+2025-10-16 11:14:34.724 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 398.15 secs
+
+2025-10-16 11:14:57.121 | INFO     | __main__:train_model:1726 - Validation - Epoch 11 Loss: 0.2559, Accuracy: 0.8761
+
+2025-10-16 11:15:10.437 | INFO     | __main__:train_model:1706 - Epoch 12 Batch 0 global_step 5072Loss 0.0550 Accuracy 0.9674 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:16:36.349 | INFO     | __main__:train_model:1706 - Epoch 12 Batch 100 global_step 5172Loss 0.0568 Accuracy 0.9656 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:18:03.670 | INFO     | __main__:train_model:1706 - Epoch 12 Batch 200 global_step 5272Loss 0.0572 Accuracy 0.9647 GPU0内存: 6.46GB/20.46GB
+2025-10-16 11:19:29.477 | INFO     | __main__:train_model:1706 - Epoch 12 Batch 300 global_step 5372Loss 0.0576 Accuracy 0.9641 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:20:56.814 | INFO     | __main__:train_model:1706 - Epoch 12 Batch 400 global_step 5472Loss 0.0582 Accuracy 0.9634 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:21:48.863 | INFO     | __main__:train_model:1716 - Epoch 12 Loss 0.0582 Accuracy 0.9631
+2025-10-16 11:21:48.863 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 399.83 secs
+
+2025-10-16 11:22:10.975 | INFO     | __main__:train_model:1726 - Validation - Epoch 12 Loss: 0.2585, Accuracy: 0.8781
+
+2025-10-16 11:22:24.282 | INFO     | __main__:train_model:1706 - Epoch 13 Batch 0 global_step 5533Loss 0.0409 Accuracy 0.9740 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:23:50.516 | INFO     | __main__:train_model:1706 - Epoch 13 Batch 100 global_step 5633Loss 0.0442 Accuracy 0.9724 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:25:16.765 | INFO     | __main__:train_model:1706 - Epoch 13 Batch 200 global_step 5733Loss 0.0451 Accuracy 0.9717 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:26:42.805 | INFO     | __main__:train_model:1706 - Epoch 13 Batch 300 global_step 5833Loss 0.0456 Accuracy 0.9710 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:28:08.385 | INFO     | __main__:train_model:1706 - Epoch 13 Batch 400 global_step 5933Loss 0.0462 Accuracy 0.9704 GPU0内存: 6.47GB/20.46GB
+2025-10-16 11:29:00.192 | INFO     | __main__:train_model:1716 - Epoch 13 Loss 0.0464 Accuracy 0.9700
+2025-10-16 11:29:00.192 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 397.31 secs
+
+2025-10-16 11:29:22.201 | INFO     | __main__:train_model:1726 - Validation - Epoch 13 Loss: 0.2606, Accuracy: 0.8780
+
+2025-10-16 11:29:36.116 | INFO     | __main__:train_model:1706 - Epoch 14 Batch 0 global_step 5994Loss 0.0439 Accuracy 0.9781 GPU0内存: 6.46GB/20.46GB
+2025-10-16 11:31:03.126 | INFO     | __main__:train_model:1706 - Epoch 14 Batch 100 global_step 6094Loss 0.0378 Accuracy 0.9766 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:32:28.361 | INFO     | __main__:train_model:1706 - Epoch 14 Batch 200 global_step 6194Loss 0.0376 Accuracy 0.9761 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:33:53.914 | INFO     | __main__:train_model:1706 - Epoch 14 Batch 300 global_step 6294Loss 0.0380 Accuracy 0.9756 GPU0内存: 6.46GB/20.47GB
+2025-10-16 11:35:19.177 | INFO     | __main__:train_model:1706 - Epoch 14 Batch 400 global_step 6394Loss 0.0384 Accuracy 0.9752 GPU0内存: 6.46GB/20.47GB
+2025-10-16 11:36:10.891 | INFO     | __main__:train_model:1716 - Epoch 14 Loss 0.0385 Accuracy 0.9750
+2025-10-16 11:36:10.892 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 396.66 secs
+
+2025-10-16 11:36:33.252 | INFO     | __main__:train_model:1726 - Validation - Epoch 14 Loss: 0.2635, Accuracy: 0.8790
+
+2025-10-16 11:36:47.020 | INFO     | __main__:train_model:1706 - Epoch 15 Batch 0 global_step 6455Loss 0.0348 Accuracy 0.9813 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:38:15.035 | INFO     | __main__:train_model:1706 - Epoch 15 Batch 100 global_step 6555Loss 0.0310 Accuracy 0.9802 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:39:41.486 | INFO     | __main__:train_model:1706 - Epoch 15 Batch 200 global_step 6655Loss 0.0315 Accuracy 0.9797 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:41:07.297 | INFO     | __main__:train_model:1706 - Epoch 15 Batch 300 global_step 6755Loss 0.0321 Accuracy 0.9792 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:42:33.236 | INFO     | __main__:train_model:1706 - Epoch 15 Batch 400 global_step 6855Loss 0.0326 Accuracy 0.9788 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:43:25.394 | INFO     | __main__:train_model:1716 - Epoch 15 Loss 0.0328 Accuracy 0.9786
+2025-10-16 11:43:25.394 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 399.82 secs
+
+2025-10-16 11:43:48.685 | INFO     | __main__:train_model:1726 - Validation - Epoch 15 Loss: 0.2661, Accuracy: 0.8801
+
+2025-10-16 11:44:02.113 | INFO     | __main__:train_model:1706 - Epoch 16 Batch 0 global_step 6916Loss 0.0288 Accuracy 0.9857 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:45:30.549 | INFO     | __main__:train_model:1706 - Epoch 16 Batch 100 global_step 7016Loss 0.0275 Accuracy 0.9822 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:46:57.783 | INFO     | __main__:train_model:1706 - Epoch 16 Batch 200 global_step 7116Loss 0.0279 Accuracy 0.9821 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:48:23.774 | INFO     | __main__:train_model:1706 - Epoch 16 Batch 300 global_step 7216Loss 0.0281 Accuracy 0.9818 GPU0内存: 6.46GB/20.47GB
+2025-10-16 11:49:50.396 | INFO     | __main__:train_model:1706 - Epoch 16 Batch 400 global_step 7316Loss 0.0283 Accuracy 0.9815 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:50:41.106 | INFO     | __main__:train_model:1716 - Epoch 16 Loss 0.0285 Accuracy 0.9814
+2025-10-16 11:50:41.106 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 400.45 secs
+
+2025-10-16 11:51:03.211 | INFO     | __main__:train_model:1726 - Validation - Epoch 16 Loss: 0.2674, Accuracy: 0.8804
+
+2025-10-16 11:51:17.276 | INFO     | __main__:train_model:1706 - Epoch 17 Batch 0 global_step 7377Loss 0.0174 Accuracy 0.9854 GPU0内存: 6.46GB/20.47GB
+2025-10-16 11:52:44.316 | INFO     | __main__:train_model:1706 - Epoch 17 Batch 100 global_step 7477Loss 0.0249 Accuracy 0.9843 GPU0内存: 6.46GB/20.47GB
+2025-10-16 11:54:10.890 | INFO     | __main__:train_model:1706 - Epoch 17 Batch 200 global_step 7577Loss 0.0247 Accuracy 0.9839 GPU0内存: 6.46GB/20.47GB
+2025-10-16 11:55:37.195 | INFO     | __main__:train_model:1706 - Epoch 17 Batch 300 global_step 7677Loss 0.0248 Accuracy 0.9837 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:57:03.734 | INFO     | __main__:train_model:1706 - Epoch 17 Batch 400 global_step 7777Loss 0.0250 Accuracy 0.9835 GPU0内存: 6.47GB/20.47GB
+2025-10-16 11:57:55.147 | INFO     | __main__:train_model:1716 - Epoch 17 Loss 0.0251 Accuracy 0.9834
+2025-10-16 11:57:55.147 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 399.79 secs
+
+2025-10-16 11:58:17.461 | INFO     | __main__:train_model:1726 - Validation - Epoch 17 Loss: 0.2702, Accuracy: 0.8806
+
+2025-10-16 11:58:31.700 | INFO     | __main__:train_model:1706 - Epoch 18 Batch 0 global_step 7838Loss 0.0213 Accuracy 0.9844 GPU0内存: 6.46GB/20.47GB
+2025-10-16 12:00:00.009 | INFO     | __main__:train_model:1706 - Epoch 18 Batch 100 global_step 7938Loss 0.0231 Accuracy 0.9853 GPU0内存: 6.47GB/20.47GB
+2025-10-16 12:01:26.347 | INFO     | __main__:train_model:1706 - Epoch 18 Batch 200 global_step 8038Loss 0.0229 Accuracy 0.9851 GPU0内存: 6.46GB/20.47GB
+2025-10-16 12:02:52.601 | INFO     | __main__:train_model:1706 - Epoch 18 Batch 300 global_step 8138Loss 0.0231 Accuracy 0.9849 GPU0内存: 6.47GB/20.47GB
+2025-10-16 12:04:17.926 | INFO     | __main__:train_model:1706 - Epoch 18 Batch 400 global_step 8238Loss 0.0232 Accuracy 0.9849 GPU0内存: 6.47GB/20.47GB
+2025-10-16 12:05:10.188 | INFO     | __main__:train_model:1716 - Epoch 18 Loss 0.0232 Accuracy 0.9848
+2025-10-16 12:05:10.188 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 399.93 secs
+
+2025-10-16 12:05:32.266 | INFO     | __main__:train_model:1726 - Validation - Epoch 18 Loss: 0.2710, Accuracy: 0.8807
+
+2025-10-16 12:05:47.563 | INFO     | __main__:train_model:1706 - Epoch 19 Batch 0 global_step 8299Loss 0.0198 Accuracy 0.9881 GPU0内存: 6.46GB/20.47GB
+2025-10-16 12:07:14.007 | INFO     | __main__:train_model:1706 - Epoch 19 Batch 100 global_step 8399Loss 0.0212 Accuracy 0.9861 GPU0内存: 6.46GB/20.47GB
+2025-10-16 12:08:39.574 | INFO     | __main__:train_model:1706 - Epoch 19 Batch 200 global_step 8499Loss 0.0217 Accuracy 0.9861 GPU0内存: 6.47GB/20.47GB
+2025-10-16 12:10:04.571 | INFO     | __main__:train_model:1706 - Epoch 19 Batch 300 global_step 8599Loss 0.0219 Accuracy 0.9860 GPU0内存: 6.47GB/20.47GB
+2025-10-16 12:11:30.420 | INFO     | __main__:train_model:1706 - Epoch 19 Batch 400 global_step 8699Loss 0.0219 Accuracy 0.9859 GPU0内存: 6.46GB/20.47GB
+2025-10-16 12:12:21.733 | INFO     | __main__:train_model:1716 - Epoch 19 Loss 0.0219 Accuracy 0.9859
+2025-10-16 12:12:21.734 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 395.54 secs
+
+2025-10-16 12:12:44.180 | INFO     | __main__:train_model:1726 - Validation - Epoch 19 Loss: 0.2719, Accuracy: 0.8811
+
+2025-10-16 12:12:58.008 | INFO     | __main__:train_model:1706 - Epoch 20 Batch 0 global_step 8760Loss 0.0221 Accuracy 0.9879 GPU0内存: 6.46GB/20.47GB
+2025-10-16 12:14:23.022 | INFO     | __main__:train_model:1706 - Epoch 20 Batch 100 global_step 8860Loss 0.0215 Accuracy 0.9862 GPU0内存: 6.47GB/20.47GB
+2025-10-16 12:15:48.747 | INFO     | __main__:train_model:1706 - Epoch 20 Batch 200 global_step 8960Loss 0.0214 Accuracy 0.9862 GPU0内存: 6.46GB/20.47GB
+2025-10-16 12:17:14.189 | INFO     | __main__:train_model:1706 - Epoch 20 Batch 300 global_step 9060Loss 0.0216 Accuracy 0.9862 GPU0内存: 6.47GB/20.47GB
+2025-10-16 12:18:39.836 | INFO     | __main__:train_model:1706 - Epoch 20 Batch 400 global_step 9160Loss 0.0216 Accuracy 0.9861 GPU0内存: 6.46GB/20.47GB
+2025-10-16 12:19:31.533 | INFO     | __main__:train_model:1716 - Epoch 20 Loss 0.0217 Accuracy 0.9861
+2025-10-16 12:19:31.534 | INFO     | __main__:train_model:1717 - Time taken for 1 epoch: 394.93 secs
+
+2025-10-16 12:19:53.665 | INFO     | __main__:train_model:1726 - Validation - Epoch 20 Loss: 0.2721, Accuracy: 0.8810
+
+2025-10-16 12:20:05.476 | INFO     | __main__:train_model:1774 - TensorBoard logging completed. Use 'tensorboard --logdir=runs' to view the logs.

@@ -1,6 +1,5 @@
 # TensorBoard logs and runs
 runs/
-*.log
 
 # Python cache
 __pycache__/

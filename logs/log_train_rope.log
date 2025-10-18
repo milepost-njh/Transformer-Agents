@@ -1,0 +1,1451 @@
+2025-10-10 18:32:28.042961: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-10-10 18:32:29.526276: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-10-10 18:32:35.436429: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:49 - ===== PyTorch & 系统信息 =====
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:50 - torch.__version__:
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:51 - python version:
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:53 - 
+===== 常用库版本 =====
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:55 - matplotlib
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:55 - numpy
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:55 - pandas
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:55 - torch
+2025-10-10 18:32:37.660 | INFO     | __main__:check_env:57 - 
+===== GPU 检查 =====
+2025-10-10 18:32:37.684 | INFO     | __main__:check_env:58 - torch.cuda.is_available():
+2025-10-10 18:32:37.684 | INFO     | __main__:check_env:59 - torch.version.cuda:
+2025-10-10 18:32:37.685 | INFO     | __main__:check_env:61 - cudnn version:
+2025-10-10 18:32:37.746 | INFO     | __main__:check_env:66 - GPU count:
+2025-10-10 18:32:37.748 | INFO     | __main__:check_env:67 - Current device id:
+2025-10-10 18:32:37.748 | INFO     | __main__:check_env:68 - GPU name:
+2025-10-10 18:32:37.748 | INFO     | __main__:check_env:69 - bfloat16 supported:
+2025-10-10 18:32:37.748 | INFO     | __main__:check_env:83 - 
+推荐使用 device: Cuda;
+2025-10-10 18:32:37.748 | INFO     | __main__:<module>:1550 - 实际使用设备:
+2025-10-10 18:32:37.748 | INFO     | __main__:load_translation_dataset:99 - 开始加载数据...
+2025-10-10 18:32:40.827 | INFO     | __main__:load_translation_dataset:110 - 数据集类型:
+2025-10-10 18:32:40.827 | INFO     | __main__:load_translation_dataset:111 - DatasetDict({
+    train: Dataset({
+        features: ['pt', 'en'],
+        num_rows: 176959
+    })
+    validation: Dataset({
+        features: ['pt', 'en'],
+        num_rows: 19663
+    })
+})
+2025-10-10 18:32:40.827 | INFO     | __main__:load_translation_dataset:115 - 示例数据 -> pt: por | en: en
+2025-10-10 18:32:40.827 | INFO     | __main__:<module>:1557 - 训练集样本数:
+2025-10-10 18:32:40.827 | INFO     | __main__:<module>:1558 - 验证集样本数:
+2025-10-10 18:32:40.827 | INFO     | __main__:<module>:1562 - 开始构建 Tokenizer...
+
+
+
+
+
+
+2025-10-10 18:33:09.583 | INFO     | __main__:train_and_load_tokenizers:196 - pt vocab size:
+2025-10-10 18:33:09.585 | INFO     | __main__:train_and_load_tokenizers:197 - en vocab size:
+2025-10-10 18:33:09.587 | INFO     | __main__:test_tokenizers:217 - === English Tokenizer Test ===
+2025-10-10 18:33:09.588 | INFO     | __main__:test_tokenizers:219 - [EN] Tokenized IDs: [56, 86, 1102, 7188, 962, 299, 5984, 18]
+2025-10-10 18:33:09.588 | INFO     | __main__:test_tokenizers:226 - [EN] Decoded string: Transformer is awesome.
+2025-10-10 18:33:09.588 | INFO     | __main__:test_tokenizers:229 - [EN] id --> decoded([id])  |  id --> token(str)
+2025-10-10 18:33:09.588 | INFO     | __main__:test_tokenizers:237 -     56 --> 'T'  |      56 --> 'T'
+2025-10-10 18:33:09.588 | INFO     | __main__:test_tokenizers:237 -     86 --> 'r'  |      86 --> 'r'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:237 -   1102 --> 'ans'  |    1102 --> 'ans'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:237 -   7188 --> 'for'  |    7188 --> 'for'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:237 -    962 --> 'mer'  |     962 --> 'mer'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:237 -    299 --> ' is'  |     299 --> 'Ġis'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:237 -   5984 --> ' awesome'  |    5984 --> 'Ġawesome'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:237 -     18 --> '.'  |      18 --> '.'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:239 - 
+------------------------------------------------------------
+
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:242 - === Portuguese Tokenizer Test ===
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:244 - [PT] Tokenized IDs: [56, 415, 87, 74, 735, 269, 87, 551, 1335, 86, 3499, 18]
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:251 - [PT] Decoded string: Transformers são incríveis.
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:254 - [PT] id --> decoded([id])  |  id --> token(str)
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -     56 --> 'T'  |      56 --> 'T'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -    415 --> 'ran'  |     415 --> 'ran'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -     87 --> 's'  |      87 --> 's'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -     74 --> 'f'  |      74 --> 'f'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -    735 --> 'orm'  |     735 --> 'orm'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -    269 --> 'er'  |     269 --> 'er'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -     87 --> 's'  |      87 --> 's'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -    551 --> ' são'  |     551 --> 'ĠsÃ£o'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -   1335 --> ' inc'  |    1335 --> 'Ġinc'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -     86 --> 'r'  |      86 --> 'r'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -   3499 --> 'íveis'  |    3499 --> 'ÃŃveis'
+2025-10-10 18:33:09.589 | INFO     | __main__:test_tokenizers:262 -     18 --> '.'  |      18 --> '.'
+2025-10-10 18:33:09.589 | INFO     | __main__:<module>:1579 - 开始构建 batch data loader...
+Token indices sequence length is longer than the specified maximum sequence length for this model (70 > 64). Running this sequence through the model will result in indexing errors
+2025-10-10 18:33:31.616 | INFO     | __main__:build_filtered_pairs:312 - [filter] kept=176957, skipped=2, max_length=64
+2025-10-10 18:33:33.920 | INFO     | __main__:build_filtered_pairs:312 - [filter] kept=19663, skipped=0, max_length=64
+2025-10-10 18:33:33.983 | INFO     | __main__:test_dataloaders:382 - === Train Loader Batch Shapes ===
+2025-10-10 18:33:33.983 | INFO     | __main__:test_dataloaders:384 - pt_input_ids         (64, 20)
+2025-10-10 18:33:33.983 | INFO     | __main__:test_dataloaders:384 - pt_attention_mask    (64, 20)
+2025-10-10 18:33:33.983 | INFO     | __main__:test_dataloaders:384 - en_input_ids         (64, 20)
+2025-10-10 18:33:33.983 | INFO     | __main__:test_dataloaders:384 - en_attention_mask    (64, 20)
+2025-10-10 18:33:33.983 | INFO     | __main__:test_dataloaders:388 - 
+=== Validation Loader Example ===
+2025-10-10 18:33:33.985 | INFO     | __main__:test_dataloaders:390 - pt_input_ids:     
+2025-10-10 18:33:33.985 | INFO     | __main__:test_dataloaders:391 - pt_attention_mask:
+/data2/workspace/yszhang/train_transformers/.venv/lib/python3.12/site-packages/torch/optim/lr_scheduler.py:192: UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
+  warnings.warn(
+2025-10-10 18:33:35.914 | INFO     | __main__:<module>:1673 - learning_rate:0.001
+2025-10-10 18:33:36.943 | INFO     | __main__:train_model:1195 - TensorBoard logs will be saved to: runs/transformer_rope_20251010_183336
+2025-10-10 18:33:39.970 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 0 global_step 1Loss 4.3401 Accuracy 0.0000
+2025-10-10 18:33:51.936 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 100 global_step 101Loss 4.5953 Accuracy 0.0000
+2025-10-10 18:34:02.075 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 200 global_step 201Loss 4.6900 Accuracy 0.0000
+2025-10-10 18:34:11.412 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 300 global_step 301Loss 4.7351 Accuracy 0.0000
+2025-10-10 18:34:21.374 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 400 global_step 401Loss 4.7465 Accuracy 0.0000
+2025-10-10 18:34:31.960 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 500 global_step 501Loss 4.7285 Accuracy 0.0000
+2025-10-10 18:34:41.551 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 600 global_step 601Loss 4.7339 Accuracy 0.0000
+2025-10-10 18:34:52.402 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 700 global_step 701Loss 4.7090 Accuracy 0.0001
+2025-10-10 18:35:02.284 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 800 global_step 801Loss 4.6844 Accuracy 0.0035
+2025-10-10 18:35:13.002 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 900 global_step 901Loss 4.6443 Accuracy 0.0145
+2025-10-10 18:35:22.520 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1000 global_step 1001Loss 4.6102 Accuracy 0.0255
+2025-10-10 18:35:32.725 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1100 global_step 1101Loss 4.5689 Accuracy 0.0346
+2025-10-10 18:35:42.628 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1200 global_step 1201Loss 4.5203 Accuracy 0.0424
+2025-10-10 18:35:51.151 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1300 global_step 1301Loss 4.4691 Accuracy 0.0502
+2025-10-10 18:36:00.706 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1400 global_step 1401Loss 4.4186 Accuracy 0.0583
+2025-10-10 18:36:10.789 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1500 global_step 1501Loss 4.3740 Accuracy 0.0663
+2025-10-10 18:36:19.891 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1600 global_step 1601Loss 4.3314 Accuracy 0.0739
+2025-10-10 18:36:29.268 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1700 global_step 1701Loss 4.2875 Accuracy 0.0812
+2025-10-10 18:36:39.195 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1800 global_step 1801Loss 4.2460 Accuracy 0.0890
+2025-10-10 18:36:48.618 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 1900 global_step 1901Loss 4.2072 Accuracy 0.0966
+2025-10-10 18:36:58.501 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 2000 global_step 2001Loss 4.1680 Accuracy 0.1035
+2025-10-10 18:37:08.445 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 2100 global_step 2101Loss 4.1286 Accuracy 0.1098
+2025-10-10 18:37:18.530 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 2200 global_step 2201Loss 4.0901 Accuracy 0.1158
+2025-10-10 18:37:27.690 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 2300 global_step 2301Loss 4.0532 Accuracy 0.1215
+2025-10-10 18:37:37.892 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 2400 global_step 2401Loss 4.0183 Accuracy 0.1276
+2025-10-10 18:37:48.667 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 2500 global_step 2501Loss 3.9813 Accuracy 0.1335
+2025-10-10 18:37:58.637 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 2600 global_step 2601Loss 3.9463 Accuracy 0.1394
+2025-10-10 18:38:08.958 | INFO     | __main__:train_model:1230 - Epoch 1 Batch 2700 global_step 2701Loss 3.9131 Accuracy 0.1452
+2025-10-10 18:38:15.681 | INFO     | __main__:train_model:1240 - Epoch 1 Loss 3.8911 Accuracy 0.1488
+2025-10-10 18:38:15.682 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 278.74 secs
+
+2025-10-10 18:38:30.094 | INFO     | __main__:train_model:1250 - Validation - Epoch 1 Loss: 2.9613, Accuracy: 0.3062
+
+2025-10-10 18:38:32.150 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 0 global_step 2766Loss 2.9060 Accuracy 0.3058
+2025-10-10 18:38:41.520 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 100 global_step 2866Loss 2.8945 Accuracy 0.3049
+2025-10-10 18:38:51.326 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 200 global_step 2966Loss 2.9019 Accuracy 0.3078
+2025-10-10 18:39:00.553 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 300 global_step 3066Loss 2.8648 Accuracy 0.3115
+2025-10-10 18:39:09.838 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 400 global_step 3166Loss 2.8381 Accuracy 0.3144
+2025-10-10 18:39:19.727 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 500 global_step 3266Loss 2.8214 Accuracy 0.3177
+2025-10-10 18:39:28.573 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 600 global_step 3366Loss 2.8030 Accuracy 0.3211
+2025-10-10 18:39:38.468 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 700 global_step 3466Loss 2.7866 Accuracy 0.3249
+2025-10-10 18:39:48.504 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 800 global_step 3566Loss 2.7699 Accuracy 0.3282
+2025-10-10 18:39:58.124 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 900 global_step 3666Loss 2.7490 Accuracy 0.3310
+2025-10-10 18:40:07.956 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1000 global_step 3766Loss 2.7367 Accuracy 0.3344
+2025-10-10 18:40:17.958 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1100 global_step 3866Loss 2.7167 Accuracy 0.3374
+2025-10-10 18:40:27.860 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1200 global_step 3966Loss 2.7012 Accuracy 0.3403
+2025-10-10 18:40:37.460 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1300 global_step 4066Loss 2.6835 Accuracy 0.3434
+2025-10-10 18:40:47.048 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1400 global_step 4166Loss 2.6651 Accuracy 0.3466
+2025-10-10 18:40:56.466 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1500 global_step 4266Loss 2.6465 Accuracy 0.3497
+2025-10-10 18:41:06.390 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1600 global_step 4366Loss 2.6283 Accuracy 0.3526
+2025-10-10 18:41:15.851 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1700 global_step 4466Loss 2.6074 Accuracy 0.3558
+2025-10-10 18:41:25.674 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1800 global_step 4566Loss 2.5863 Accuracy 0.3588
+2025-10-10 18:41:35.234 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 1900 global_step 4666Loss 2.5674 Accuracy 0.3616
+2025-10-10 18:41:45.124 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 2000 global_step 4766Loss 2.5474 Accuracy 0.3645
+2025-10-10 18:41:54.602 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 2100 global_step 4866Loss 2.5325 Accuracy 0.3673
+2025-10-10 18:42:03.916 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 2200 global_step 4966Loss 2.5182 Accuracy 0.3699
+2025-10-10 18:42:13.813 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 2300 global_step 5066Loss 2.5011 Accuracy 0.3727
+2025-10-10 18:42:23.389 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 2400 global_step 5166Loss 2.4835 Accuracy 0.3754
+2025-10-10 18:42:33.343 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 2500 global_step 5266Loss 2.4664 Accuracy 0.3780
+2025-10-10 18:42:42.819 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 2600 global_step 5366Loss 2.4497 Accuracy 0.3809
+2025-10-10 18:42:51.790 | INFO     | __main__:train_model:1230 - Epoch 2 Batch 2700 global_step 5466Loss 2.4351 Accuracy 0.3835
+2025-10-10 18:42:57.981 | INFO     | __main__:train_model:1240 - Epoch 2 Loss 2.4254 Accuracy 0.3852
+2025-10-10 18:42:57.981 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 265.96 secs
+
+2025-10-10 18:43:11.383 | INFO     | __main__:train_model:1250 - Validation - Epoch 2 Loss: 1.9775, Accuracy: 0.4641
+
+2025-10-10 18:43:14.059 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 0 global_step 5531Loss 2.1955 Accuracy 0.4709
+2025-10-10 18:43:24.530 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 100 global_step 5631Loss 1.9586 Accuracy 0.4612
+2025-10-10 18:43:33.720 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 200 global_step 5731Loss 1.9523 Accuracy 0.4639
+2025-10-10 18:43:42.913 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 300 global_step 5831Loss 1.9324 Accuracy 0.4658
+2025-10-10 18:43:52.569 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 400 global_step 5931Loss 1.9163 Accuracy 0.4681
+2025-10-10 18:44:02.473 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 500 global_step 6031Loss 1.9043 Accuracy 0.4704
+2025-10-10 18:44:12.184 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 600 global_step 6131Loss 1.9051 Accuracy 0.4728
+2025-10-10 18:44:21.826 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 700 global_step 6231Loss 1.9012 Accuracy 0.4761
+2025-10-10 18:44:31.637 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 800 global_step 6331Loss 1.8925 Accuracy 0.4784
+2025-10-10 18:44:41.665 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 900 global_step 6431Loss 1.8773 Accuracy 0.4803
+2025-10-10 18:44:49.429 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1000 global_step 6531Loss 1.8676 Accuracy 0.4823
+2025-10-10 18:44:58.728 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1100 global_step 6631Loss 1.8568 Accuracy 0.4842
+2025-10-10 18:45:08.263 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1200 global_step 6731Loss 1.8464 Accuracy 0.4861
+2025-10-10 18:45:17.749 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1300 global_step 6831Loss 1.8375 Accuracy 0.4882
+2025-10-10 18:45:27.244 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1400 global_step 6931Loss 1.8302 Accuracy 0.4904
+2025-10-10 18:45:36.120 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1500 global_step 7031Loss 1.8213 Accuracy 0.4923
+2025-10-10 18:45:44.842 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1600 global_step 7131Loss 1.8106 Accuracy 0.4940
+2025-10-10 18:45:54.286 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1700 global_step 7231Loss 1.8034 Accuracy 0.4960
+2025-10-10 18:46:04.275 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1800 global_step 7331Loss 1.7913 Accuracy 0.4978
+2025-10-10 18:46:14.000 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 1900 global_step 7431Loss 1.7829 Accuracy 0.4995
+2025-10-10 18:46:23.970 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 2000 global_step 7531Loss 1.7751 Accuracy 0.5014
+2025-10-10 18:46:33.919 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 2100 global_step 7631Loss 1.7641 Accuracy 0.5034
+2025-10-10 18:46:43.730 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 2200 global_step 7731Loss 1.7557 Accuracy 0.5053
+2025-10-10 18:46:53.309 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 2300 global_step 7831Loss 1.7483 Accuracy 0.5073
+2025-10-10 18:47:03.604 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 2400 global_step 7931Loss 1.7392 Accuracy 0.5093
+2025-10-10 18:47:13.262 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 2500 global_step 8031Loss 1.7320 Accuracy 0.5111
+2025-10-10 18:47:22.401 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 2600 global_step 8131Loss 1.7222 Accuracy 0.5131
+2025-10-10 18:47:31.719 | INFO     | __main__:train_model:1230 - Epoch 3 Batch 2700 global_step 8231Loss 1.7133 Accuracy 0.5152
+2025-10-10 18:47:37.687 | INFO     | __main__:train_model:1240 - Epoch 3 Loss 1.7077 Accuracy 0.5164
+2025-10-10 18:47:37.687 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 263.78 secs
+
+2025-10-10 18:47:51.572 | INFO     | __main__:train_model:1250 - Validation - Epoch 3 Loss: 1.4328, Accuracy: 0.5795
+
+2025-10-10 18:47:54.136 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 0 global_step 8296Loss 1.6168 Accuracy 0.5858
+2025-10-10 18:48:03.890 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 100 global_step 8396Loss 1.4689 Accuracy 0.5747
+2025-10-10 18:48:14.143 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 200 global_step 8496Loss 1.4555 Accuracy 0.5761
+2025-10-10 18:48:24.279 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 300 global_step 8596Loss 1.4448 Accuracy 0.5789
+2025-10-10 18:48:33.999 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 400 global_step 8696Loss 1.4364 Accuracy 0.5803
+2025-10-10 18:48:42.998 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 500 global_step 8796Loss 1.4302 Accuracy 0.5819
+2025-10-10 18:48:52.609 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 600 global_step 8896Loss 1.4184 Accuracy 0.5835
+2025-10-10 18:49:01.858 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 700 global_step 8996Loss 1.4111 Accuracy 0.5851
+2025-10-10 18:49:11.064 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 800 global_step 9096Loss 1.4038 Accuracy 0.5871
+2025-10-10 18:49:21.357 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 900 global_step 9196Loss 1.3962 Accuracy 0.5893
+2025-10-10 18:49:31.127 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1000 global_step 9296Loss 1.3863 Accuracy 0.5909
+2025-10-10 18:49:40.619 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1100 global_step 9396Loss 1.3780 Accuracy 0.5925
+2025-10-10 18:49:49.756 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1200 global_step 9496Loss 1.3679 Accuracy 0.5944
+2025-10-10 18:49:59.651 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1300 global_step 9596Loss 1.3559 Accuracy 0.5960
+2025-10-10 18:50:09.161 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1400 global_step 9696Loss 1.3465 Accuracy 0.5975
+2025-10-10 18:50:18.792 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1500 global_step 9796Loss 1.3383 Accuracy 0.5995
+2025-10-10 18:50:28.513 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1600 global_step 9896Loss 1.3318 Accuracy 0.6010
+2025-10-10 18:50:37.836 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1700 global_step 9996Loss 1.3252 Accuracy 0.6025
+2025-10-10 18:50:47.156 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1800 global_step 10096Loss 1.3172 Accuracy 0.6041
+2025-10-10 18:50:57.745 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 1900 global_step 10196Loss 1.3097 Accuracy 0.6059
+2025-10-10 18:51:07.824 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 2000 global_step 10296Loss 1.3034 Accuracy 0.6076
+2025-10-10 18:51:17.075 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 2100 global_step 10396Loss 1.2963 Accuracy 0.6093
+2025-10-10 18:51:28.169 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 2200 global_step 10496Loss 1.2887 Accuracy 0.6109
+2025-10-10 18:51:38.636 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 2300 global_step 10596Loss 1.2820 Accuracy 0.6126
+2025-10-10 18:51:47.747 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 2400 global_step 10696Loss 1.2753 Accuracy 0.6143
+2025-10-10 18:51:58.562 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 2500 global_step 10796Loss 1.2692 Accuracy 0.6160
+2025-10-10 18:52:08.212 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 2600 global_step 10896Loss 1.2631 Accuracy 0.6176
+2025-10-10 18:52:17.345 | INFO     | __main__:train_model:1230 - Epoch 4 Batch 2700 global_step 10996Loss 1.2569 Accuracy 0.6193
+2025-10-10 18:52:23.369 | INFO     | __main__:train_model:1240 - Epoch 4 Loss 1.2528 Accuracy 0.6203
+2025-10-10 18:52:23.369 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 269.36 secs
+
+2025-10-10 18:52:36.113 | INFO     | __main__:train_model:1250 - Validation - Epoch 4 Loss: 1.0676, Accuracy: 0.6659
+
+2025-10-10 18:52:39.058 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 0 global_step 11061Loss 0.9515 Accuracy 0.6974
+2025-10-10 18:52:48.560 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 100 global_step 11161Loss 1.0541 Accuracy 0.6683
+2025-10-10 18:52:58.670 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 200 global_step 11261Loss 1.0490 Accuracy 0.6691
+2025-10-10 18:53:08.821 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 300 global_step 11361Loss 1.0467 Accuracy 0.6708
+2025-10-10 18:53:18.995 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 400 global_step 11461Loss 1.0420 Accuracy 0.6733
+2025-10-10 18:53:28.666 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 500 global_step 11561Loss 1.0391 Accuracy 0.6755
+2025-10-10 18:53:38.531 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 600 global_step 11661Loss 1.0362 Accuracy 0.6770
+2025-10-10 18:53:47.975 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 700 global_step 11761Loss 1.0314 Accuracy 0.6781
+2025-10-10 18:53:57.817 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 800 global_step 11861Loss 1.0254 Accuracy 0.6793
+2025-10-10 18:54:07.333 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 900 global_step 11961Loss 1.0193 Accuracy 0.6804
+2025-10-10 18:54:16.983 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1000 global_step 12061Loss 1.0139 Accuracy 0.6815
+2025-10-10 18:54:26.569 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1100 global_step 12161Loss 1.0077 Accuracy 0.6826
+2025-10-10 18:54:36.321 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1200 global_step 12261Loss 1.0010 Accuracy 0.6841
+2025-10-10 18:54:47.081 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1300 global_step 12361Loss 0.9967 Accuracy 0.6855
+2025-10-10 18:54:54.740 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1400 global_step 12461Loss 0.9903 Accuracy 0.6868
+2025-10-10 18:55:04.900 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1500 global_step 12561Loss 0.9866 Accuracy 0.6879
+2025-10-10 18:55:14.792 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1600 global_step 12661Loss 0.9824 Accuracy 0.6892
+2025-10-10 18:55:25.265 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1700 global_step 12761Loss 0.9775 Accuracy 0.6903
+2025-10-10 18:55:34.731 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1800 global_step 12861Loss 0.9745 Accuracy 0.6914
+2025-10-10 18:55:43.968 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 1900 global_step 12961Loss 0.9689 Accuracy 0.6926
+2025-10-10 18:55:53.820 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 2000 global_step 13061Loss 0.9628 Accuracy 0.6938
+2025-10-10 18:56:03.641 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 2100 global_step 13161Loss 0.9579 Accuracy 0.6950
+2025-10-10 18:56:13.839 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 2200 global_step 13261Loss 0.9528 Accuracy 0.6962
+2025-10-10 18:56:23.826 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 2300 global_step 13361Loss 0.9492 Accuracy 0.6974
+2025-10-10 18:56:33.930 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 2400 global_step 13461Loss 0.9445 Accuracy 0.6985
+2025-10-10 18:56:43.985 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 2500 global_step 13561Loss 0.9402 Accuracy 0.6997
+2025-10-10 18:56:52.991 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 2600 global_step 13661Loss 0.9356 Accuracy 0.7008
+2025-10-10 18:57:02.467 | INFO     | __main__:train_model:1230 - Epoch 5 Batch 2700 global_step 13761Loss 0.9316 Accuracy 0.7019
+2025-10-10 18:57:08.530 | INFO     | __main__:train_model:1240 - Epoch 5 Loss 0.9291 Accuracy 0.7026
+2025-10-10 18:57:08.531 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 269.60 secs
+
+2025-10-10 18:57:23.090 | INFO     | __main__:train_model:1250 - Validation - Epoch 5 Loss: 0.7869, Accuracy: 0.7404
+
+2025-10-10 18:57:25.854 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 0 global_step 13826Loss 0.8074 Accuracy 0.7570
+2025-10-10 18:57:35.616 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 100 global_step 13926Loss 0.7711 Accuracy 0.7457
+2025-10-10 18:57:44.611 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 200 global_step 14026Loss 0.7697 Accuracy 0.7422
+2025-10-10 18:57:54.298 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 300 global_step 14126Loss 0.7755 Accuracy 0.7416
+2025-10-10 18:58:03.930 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 400 global_step 14226Loss 0.7659 Accuracy 0.7443
+2025-10-10 18:58:13.151 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 500 global_step 14326Loss 0.7618 Accuracy 0.7452
+2025-10-10 18:58:23.094 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 600 global_step 14426Loss 0.7593 Accuracy 0.7455
+2025-10-10 18:58:32.421 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 700 global_step 14526Loss 0.7585 Accuracy 0.7453
+2025-10-10 18:58:42.330 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 800 global_step 14626Loss 0.7560 Accuracy 0.7460
+2025-10-10 18:58:51.972 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 900 global_step 14726Loss 0.7533 Accuracy 0.7472
+2025-10-10 18:59:02.031 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1000 global_step 14826Loss 0.7532 Accuracy 0.7471
+2025-10-10 18:59:11.226 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1100 global_step 14926Loss 0.7493 Accuracy 0.7480
+2025-10-10 18:59:20.920 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1200 global_step 15026Loss 0.7471 Accuracy 0.7489
+2025-10-10 18:59:30.788 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1300 global_step 15126Loss 0.7440 Accuracy 0.7495
+2025-10-10 18:59:40.312 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1400 global_step 15226Loss 0.7413 Accuracy 0.7500
+2025-10-10 18:59:49.480 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1500 global_step 15326Loss 0.7400 Accuracy 0.7508
+2025-10-10 18:59:59.061 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1600 global_step 15426Loss 0.7385 Accuracy 0.7513
+2025-10-10 19:00:08.846 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1700 global_step 15526Loss 0.7367 Accuracy 0.7522
+2025-10-10 19:00:17.720 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1800 global_step 15626Loss 0.7336 Accuracy 0.7529
+2025-10-10 19:00:27.209 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 1900 global_step 15726Loss 0.7300 Accuracy 0.7536
+2025-10-10 19:00:37.232 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 2000 global_step 15826Loss 0.7277 Accuracy 0.7542
+2025-10-10 19:00:46.703 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 2100 global_step 15926Loss 0.7240 Accuracy 0.7550
+2025-10-10 19:00:56.612 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 2200 global_step 16026Loss 0.7208 Accuracy 0.7557
+2025-10-10 19:01:06.948 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 2300 global_step 16126Loss 0.7178 Accuracy 0.7565
+2025-10-10 19:01:16.231 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 2400 global_step 16226Loss 0.7151 Accuracy 0.7571
+2025-10-10 19:01:25.343 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 2500 global_step 16326Loss 0.7125 Accuracy 0.7577
+2025-10-10 19:01:35.348 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 2600 global_step 16426Loss 0.7103 Accuracy 0.7582
+2025-10-10 19:01:45.092 | INFO     | __main__:train_model:1230 - Epoch 6 Batch 2700 global_step 16526Loss 0.7068 Accuracy 0.7590
+2025-10-10 19:01:50.704 | INFO     | __main__:train_model:1240 - Epoch 6 Loss 0.7053 Accuracy 0.7594
+2025-10-10 19:01:50.704 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 264.96 secs
+
+2025-10-10 19:02:04.775 | INFO     | __main__:train_model:1250 - Validation - Epoch 6 Loss: 0.6270, Accuracy: 0.7796
+
+2025-10-10 19:02:07.371 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 0 global_step 16591Loss 0.7741 Accuracy 0.8096
+2025-10-10 19:02:16.749 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 100 global_step 16691Loss 0.5956 Accuracy 0.7885
+2025-10-10 19:02:25.788 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 200 global_step 16791Loss 0.5984 Accuracy 0.7880
+2025-10-10 19:02:34.987 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 300 global_step 16891Loss 0.5957 Accuracy 0.7885
+2025-10-10 19:02:44.618 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 400 global_step 16991Loss 0.5933 Accuracy 0.7890
+2025-10-10 19:02:53.747 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 500 global_step 17091Loss 0.5905 Accuracy 0.7896
+2025-10-10 19:03:02.724 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 600 global_step 17191Loss 0.5875 Accuracy 0.7905
+2025-10-10 19:03:12.453 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 700 global_step 17291Loss 0.5871 Accuracy 0.7907
+2025-10-10 19:03:22.522 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 800 global_step 17391Loss 0.5844 Accuracy 0.7914
+2025-10-10 19:03:31.961 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 900 global_step 17491Loss 0.5831 Accuracy 0.7917
+2025-10-10 19:03:41.654 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1000 global_step 17591Loss 0.5826 Accuracy 0.7921
+2025-10-10 19:03:51.293 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1100 global_step 17691Loss 0.5799 Accuracy 0.7927
+2025-10-10 19:04:00.535 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1200 global_step 17791Loss 0.5773 Accuracy 0.7928
+2025-10-10 19:04:11.413 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1300 global_step 17891Loss 0.5750 Accuracy 0.7930
+2025-10-10 19:04:21.443 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1400 global_step 17991Loss 0.5724 Accuracy 0.7931
+2025-10-10 19:04:30.436 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1500 global_step 18091Loss 0.5716 Accuracy 0.7932
+2025-10-10 19:04:40.389 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1600 global_step 18191Loss 0.5684 Accuracy 0.7940
+2025-10-10 19:04:49.869 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1700 global_step 18291Loss 0.5665 Accuracy 0.7945
+2025-10-10 19:04:59.177 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1800 global_step 18391Loss 0.5649 Accuracy 0.7949
+2025-10-10 19:05:08.826 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 1900 global_step 18491Loss 0.5640 Accuracy 0.7953
+2025-10-10 19:05:18.242 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 2000 global_step 18591Loss 0.5629 Accuracy 0.7956
+2025-10-10 19:05:28.319 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 2100 global_step 18691Loss 0.5611 Accuracy 0.7960
+2025-10-10 19:05:37.652 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 2200 global_step 18791Loss 0.5602 Accuracy 0.7963
+2025-10-10 19:05:46.607 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 2300 global_step 18891Loss 0.5584 Accuracy 0.7966
+2025-10-10 19:05:55.844 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 2400 global_step 18991Loss 0.5561 Accuracy 0.7972
+2025-10-10 19:06:05.348 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 2500 global_step 19091Loss 0.5549 Accuracy 0.7974
+2025-10-10 19:06:14.838 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 2600 global_step 19191Loss 0.5531 Accuracy 0.7977
+2025-10-10 19:06:24.082 | INFO     | __main__:train_model:1230 - Epoch 7 Batch 2700 global_step 19291Loss 0.5514 Accuracy 0.7981
+2025-10-10 19:06:30.594 | INFO     | __main__:train_model:1240 - Epoch 7 Loss 0.5504 Accuracy 0.7984
+2025-10-10 19:06:30.594 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 263.37 secs
+
+2025-10-10 19:06:43.765 | INFO     | __main__:train_model:1250 - Validation - Epoch 7 Loss: 0.5102, Accuracy: 0.8112
+
+2025-10-10 19:06:46.473 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 0 global_step 19356Loss 0.4826 Accuracy 0.8278
+2025-10-10 19:06:55.962 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 100 global_step 19456Loss 0.4624 Accuracy 0.8236
+2025-10-10 19:07:05.450 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 200 global_step 19556Loss 0.4644 Accuracy 0.8242
+2025-10-10 19:07:14.867 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 300 global_step 19656Loss 0.4609 Accuracy 0.8245
+2025-10-10 19:07:24.699 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 400 global_step 19756Loss 0.4583 Accuracy 0.8248
+2025-10-10 19:07:34.331 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 500 global_step 19856Loss 0.4594 Accuracy 0.8241
+2025-10-10 19:07:43.615 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 600 global_step 19956Loss 0.4591 Accuracy 0.8240
+2025-10-10 19:07:52.881 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 700 global_step 20056Loss 0.4592 Accuracy 0.8238
+2025-10-10 19:08:02.440 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 800 global_step 20156Loss 0.4581 Accuracy 0.8239
+2025-10-10 19:08:12.416 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 900 global_step 20256Loss 0.4581 Accuracy 0.8237
+2025-10-10 19:08:21.860 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1000 global_step 20356Loss 0.4559 Accuracy 0.8241
+2025-10-10 19:08:31.743 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1100 global_step 20456Loss 0.4530 Accuracy 0.8245
+2025-10-10 19:08:41.114 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1200 global_step 20556Loss 0.4517 Accuracy 0.8246
+2025-10-10 19:08:50.976 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1300 global_step 20656Loss 0.4500 Accuracy 0.8250
+2025-10-10 19:09:00.287 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1400 global_step 20756Loss 0.4502 Accuracy 0.8250
+2025-10-10 19:09:09.822 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1500 global_step 20856Loss 0.4493 Accuracy 0.8252
+2025-10-10 19:09:19.413 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1600 global_step 20956Loss 0.4488 Accuracy 0.8251
+2025-10-10 19:09:29.016 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1700 global_step 21056Loss 0.4481 Accuracy 0.8252
+2025-10-10 19:09:38.644 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1800 global_step 21156Loss 0.4475 Accuracy 0.8252
+2025-10-10 19:09:48.326 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 1900 global_step 21256Loss 0.4467 Accuracy 0.8254
+2025-10-10 19:09:57.800 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 2000 global_step 21356Loss 0.4457 Accuracy 0.8254
+2025-10-10 19:10:07.356 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 2100 global_step 21456Loss 0.4448 Accuracy 0.8257
+2025-10-10 19:10:17.342 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 2200 global_step 21556Loss 0.4443 Accuracy 0.8258
+2025-10-10 19:10:27.002 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 2300 global_step 21656Loss 0.4438 Accuracy 0.8260
+2025-10-10 19:10:36.605 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 2400 global_step 21756Loss 0.4426 Accuracy 0.8263
+2025-10-10 19:10:46.352 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 2500 global_step 21856Loss 0.4415 Accuracy 0.8265
+2025-10-10 19:10:55.702 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 2600 global_step 21956Loss 0.4410 Accuracy 0.8267
+2025-10-10 19:11:05.673 | INFO     | __main__:train_model:1230 - Epoch 8 Batch 2700 global_step 22056Loss 0.4404 Accuracy 0.8268
+2025-10-10 19:11:11.990 | INFO     | __main__:train_model:1240 - Epoch 8 Loss 0.4401 Accuracy 0.8268
+2025-10-10 19:11:11.990 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 265.65 secs
+
+2025-10-10 19:11:24.972 | INFO     | __main__:train_model:1250 - Validation - Epoch 8 Loss: 0.4432, Accuracy: 0.8286
+
+2025-10-10 19:11:27.449 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 0 global_step 22121Loss 0.3237 Accuracy 0.8284
+2025-10-10 19:11:35.662 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 100 global_step 22221Loss 0.3468 Accuracy 0.8508
+2025-10-10 19:11:44.277 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 200 global_step 22321Loss 0.3525 Accuracy 0.8516
+2025-10-10 19:11:53.304 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 300 global_step 22421Loss 0.3598 Accuracy 0.8498
+2025-10-10 19:12:01.651 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 400 global_step 22521Loss 0.3602 Accuracy 0.8493
+2025-10-10 19:12:11.017 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 500 global_step 22621Loss 0.3602 Accuracy 0.8488
+2025-10-10 19:12:20.576 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 600 global_step 22721Loss 0.3605 Accuracy 0.8486
+2025-10-10 19:12:28.927 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 700 global_step 22821Loss 0.3618 Accuracy 0.8478
+2025-10-10 19:12:35.168 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 800 global_step 22921Loss 0.3638 Accuracy 0.8478
+2025-10-10 19:12:43.558 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 900 global_step 23021Loss 0.3633 Accuracy 0.8475
+2025-10-10 19:12:52.070 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1000 global_step 23121Loss 0.3638 Accuracy 0.8476
+2025-10-10 19:12:59.114 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1100 global_step 23221Loss 0.3642 Accuracy 0.8475
+2025-10-10 19:13:05.646 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1200 global_step 23321Loss 0.3644 Accuracy 0.8477
+2025-10-10 19:13:13.348 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1300 global_step 23421Loss 0.3642 Accuracy 0.8476
+2025-10-10 19:13:22.799 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1400 global_step 23521Loss 0.3654 Accuracy 0.8473
+2025-10-10 19:13:32.009 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1500 global_step 23621Loss 0.3644 Accuracy 0.8475
+2025-10-10 19:13:40.268 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1600 global_step 23721Loss 0.3638 Accuracy 0.8476
+2025-10-10 19:13:48.035 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1700 global_step 23821Loss 0.3635 Accuracy 0.8477
+2025-10-10 19:13:56.751 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1800 global_step 23921Loss 0.3631 Accuracy 0.8479
+2025-10-10 19:14:05.662 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 1900 global_step 24021Loss 0.3629 Accuracy 0.8478
+2025-10-10 19:14:14.550 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 2000 global_step 24121Loss 0.3623 Accuracy 0.8478
+2025-10-10 19:14:23.252 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 2100 global_step 24221Loss 0.3626 Accuracy 0.8477
+2025-10-10 19:14:32.721 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 2200 global_step 24321Loss 0.3620 Accuracy 0.8478
+2025-10-10 19:14:40.733 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 2300 global_step 24421Loss 0.3618 Accuracy 0.8477
+2025-10-10 19:14:48.410 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 2400 global_step 24521Loss 0.3617 Accuracy 0.8477
+2025-10-10 19:14:56.378 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 2500 global_step 24621Loss 0.3615 Accuracy 0.8477
+2025-10-10 19:15:03.832 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 2600 global_step 24721Loss 0.3610 Accuracy 0.8479
+2025-10-10 19:15:10.393 | INFO     | __main__:train_model:1230 - Epoch 9 Batch 2700 global_step 24821Loss 0.3608 Accuracy 0.8480
+2025-10-10 19:15:16.038 | INFO     | __main__:train_model:1240 - Epoch 9 Loss 0.3605 Accuracy 0.8481
+2025-10-10 19:15:16.038 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 228.73 secs
+
+2025-10-10 19:15:27.982 | INFO     | __main__:train_model:1250 - Validation - Epoch 9 Loss: 0.4010, Accuracy: 0.8397
+
+2025-10-10 19:15:30.533 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 0 global_step 24886Loss 0.3173 Accuracy 0.8626
+2025-10-10 19:15:39.813 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 100 global_step 24986Loss 0.2840 Accuracy 0.8713
+2025-10-10 19:15:48.962 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 200 global_step 25086Loss 0.2853 Accuracy 0.8695
+2025-10-10 19:15:58.455 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 300 global_step 25186Loss 0.2875 Accuracy 0.8698
+2025-10-10 19:16:07.854 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 400 global_step 25286Loss 0.2883 Accuracy 0.8701
+2025-10-10 19:16:16.164 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 500 global_step 25386Loss 0.2908 Accuracy 0.8691
+2025-10-10 19:16:25.244 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 600 global_step 25486Loss 0.2908 Accuracy 0.8689
+2025-10-10 19:16:34.075 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 700 global_step 25586Loss 0.2923 Accuracy 0.8682
+2025-10-10 19:16:43.378 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 800 global_step 25686Loss 0.2926 Accuracy 0.8677
+2025-10-10 19:16:51.599 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 900 global_step 25786Loss 0.2930 Accuracy 0.8679
+2025-10-10 19:16:58.994 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1000 global_step 25886Loss 0.2937 Accuracy 0.8679
+2025-10-10 19:17:08.525 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1100 global_step 25986Loss 0.2939 Accuracy 0.8678
+2025-10-10 19:17:17.347 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1200 global_step 26086Loss 0.2951 Accuracy 0.8674
+2025-10-10 19:17:26.090 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1300 global_step 26186Loss 0.2954 Accuracy 0.8672
+2025-10-10 19:17:35.560 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1400 global_step 26286Loss 0.2960 Accuracy 0.8670
+2025-10-10 19:17:44.848 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1500 global_step 26386Loss 0.2964 Accuracy 0.8669
+2025-10-10 19:17:53.659 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1600 global_step 26486Loss 0.2966 Accuracy 0.8668
+2025-10-10 19:18:02.333 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1700 global_step 26586Loss 0.2978 Accuracy 0.8665
+2025-10-10 19:18:11.460 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1800 global_step 26686Loss 0.2985 Accuracy 0.8665
+2025-10-10 19:18:20.791 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 1900 global_step 26786Loss 0.2990 Accuracy 0.8662
+2025-10-10 19:18:28.220 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 2000 global_step 26886Loss 0.2994 Accuracy 0.8661
+2025-10-10 19:18:35.363 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 2100 global_step 26986Loss 0.2994 Accuracy 0.8661
+2025-10-10 19:18:44.838 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 2200 global_step 27086Loss 0.2993 Accuracy 0.8660
+2025-10-10 19:18:54.181 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 2300 global_step 27186Loss 0.2993 Accuracy 0.8659
+2025-10-10 19:19:01.253 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 2400 global_step 27286Loss 0.2996 Accuracy 0.8657
+2025-10-10 19:19:08.188 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 2500 global_step 27386Loss 0.2998 Accuracy 0.8655
+2025-10-10 19:19:15.089 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 2600 global_step 27486Loss 0.3002 Accuracy 0.8654
+2025-10-10 19:19:23.025 | INFO     | __main__:train_model:1230 - Epoch 10 Batch 2700 global_step 27586Loss 0.3000 Accuracy 0.8654
+2025-10-10 19:19:28.328 | INFO     | __main__:train_model:1240 - Epoch 10 Loss 0.2999 Accuracy 0.8654
+2025-10-10 19:19:28.329 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 237.89 secs
+
+2025-10-10 19:19:40.093 | INFO     | __main__:train_model:1250 - Validation - Epoch 10 Loss: 0.3679, Accuracy: 0.8494
+
+2025-10-10 19:19:42.336 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 0 global_step 27651Loss 0.1954 Accuracy 0.9041
+2025-10-10 19:19:51.352 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 100 global_step 27751Loss 0.2304 Accuracy 0.8888
+2025-10-10 19:19:58.717 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 200 global_step 27851Loss 0.2319 Accuracy 0.8865
+2025-10-10 19:20:06.724 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 300 global_step 27951Loss 0.2338 Accuracy 0.8863
+2025-10-10 19:20:15.450 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 400 global_step 28051Loss 0.2365 Accuracy 0.8857
+2025-10-10 19:20:24.847 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 500 global_step 28151Loss 0.2387 Accuracy 0.8850
+2025-10-10 19:20:32.724 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 600 global_step 28251Loss 0.2394 Accuracy 0.8847
+2025-10-10 19:20:39.147 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 700 global_step 28351Loss 0.2411 Accuracy 0.8841
+2025-10-10 19:20:46.375 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 800 global_step 28451Loss 0.2420 Accuracy 0.8837
+2025-10-10 19:20:53.088 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 900 global_step 28551Loss 0.2435 Accuracy 0.8834
+2025-10-10 19:21:00.862 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1000 global_step 28651Loss 0.2439 Accuracy 0.8831
+2025-10-10 19:21:10.008 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1100 global_step 28751Loss 0.2449 Accuracy 0.8825
+2025-10-10 19:21:18.808 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1200 global_step 28851Loss 0.2463 Accuracy 0.8823
+2025-10-10 19:21:27.288 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1300 global_step 28951Loss 0.2474 Accuracy 0.8818
+2025-10-10 19:21:35.556 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1400 global_step 29051Loss 0.2484 Accuracy 0.8815
+2025-10-10 19:21:44.516 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1500 global_step 29151Loss 0.2486 Accuracy 0.8812
+2025-10-10 19:21:53.532 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1600 global_step 29251Loss 0.2489 Accuracy 0.8811
+2025-10-10 19:22:01.955 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1700 global_step 29351Loss 0.2495 Accuracy 0.8810
+2025-10-10 19:22:09.601 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1800 global_step 29451Loss 0.2501 Accuracy 0.8808
+2025-10-10 19:22:18.687 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 1900 global_step 29551Loss 0.2506 Accuracy 0.8805
+2025-10-10 19:22:27.867 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 2000 global_step 29651Loss 0.2512 Accuracy 0.8802
+2025-10-10 19:22:36.438 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 2100 global_step 29751Loss 0.2517 Accuracy 0.8799
+2025-10-10 19:22:43.733 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 2200 global_step 29851Loss 0.2523 Accuracy 0.8796
+2025-10-10 19:22:51.405 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 2300 global_step 29951Loss 0.2529 Accuracy 0.8793
+2025-10-10 19:23:01.112 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 2400 global_step 30051Loss 0.2532 Accuracy 0.8791
+2025-10-10 19:23:09.966 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 2500 global_step 30151Loss 0.2541 Accuracy 0.8789
+2025-10-10 19:23:18.939 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 2600 global_step 30251Loss 0.2546 Accuracy 0.8787
+2025-10-10 19:23:27.723 | INFO     | __main__:train_model:1230 - Epoch 11 Batch 2700 global_step 30351Loss 0.2550 Accuracy 0.8785
+2025-10-10 19:23:32.690 | INFO     | __main__:train_model:1240 - Epoch 11 Loss 0.2553 Accuracy 0.8783
+2025-10-10 19:23:32.691 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 230.49 secs
+
+2025-10-10 19:23:44.338 | INFO     | __main__:train_model:1250 - Validation - Epoch 11 Loss: 0.3568, Accuracy: 0.8535
+
+2025-10-10 19:23:47.109 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 0 global_step 30416Loss 0.1683 Accuracy 0.9220
+2025-10-10 19:23:56.507 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 100 global_step 30516Loss 0.1993 Accuracy 0.8998
+2025-10-10 19:24:05.362 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 200 global_step 30616Loss 0.2000 Accuracy 0.8992
+2025-10-10 19:24:13.979 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 300 global_step 30716Loss 0.1995 Accuracy 0.8994
+2025-10-10 19:24:22.278 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 400 global_step 30816Loss 0.2007 Accuracy 0.8984
+2025-10-10 19:24:30.553 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 500 global_step 30916Loss 0.2018 Accuracy 0.8974
+2025-10-10 19:24:37.780 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 600 global_step 31016Loss 0.2034 Accuracy 0.8964
+2025-10-10 19:24:46.247 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 700 global_step 31116Loss 0.2057 Accuracy 0.8960
+2025-10-10 19:24:54.754 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 800 global_step 31216Loss 0.2074 Accuracy 0.8953
+2025-10-10 19:25:03.179 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 900 global_step 31316Loss 0.2089 Accuracy 0.8945
+2025-10-10 19:25:12.204 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1000 global_step 31416Loss 0.2096 Accuracy 0.8941
+2025-10-10 19:25:21.669 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1100 global_step 31516Loss 0.2108 Accuracy 0.8937
+2025-10-10 19:25:30.721 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1200 global_step 31616Loss 0.2121 Accuracy 0.8931
+2025-10-10 19:25:37.908 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1300 global_step 31716Loss 0.2131 Accuracy 0.8925
+2025-10-10 19:25:45.998 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1400 global_step 31816Loss 0.2145 Accuracy 0.8921
+2025-10-10 19:25:54.363 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1500 global_step 31916Loss 0.2157 Accuracy 0.8917
+2025-10-10 19:26:02.873 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1600 global_step 32016Loss 0.2165 Accuracy 0.8913
+2025-10-10 19:26:11.290 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1700 global_step 32116Loss 0.2180 Accuracy 0.8907
+2025-10-10 19:26:19.651 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1800 global_step 32216Loss 0.2189 Accuracy 0.8904
+2025-10-10 19:26:29.088 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 1900 global_step 32316Loss 0.2194 Accuracy 0.8901
+2025-10-10 19:26:38.247 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 2000 global_step 32416Loss 0.2203 Accuracy 0.8897
+2025-10-10 19:26:47.080 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 2100 global_step 32516Loss 0.2209 Accuracy 0.8893
+2025-10-10 19:26:55.592 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 2200 global_step 32616Loss 0.2215 Accuracy 0.8890
+2025-10-10 19:27:04.576 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 2300 global_step 32716Loss 0.2222 Accuracy 0.8887
+2025-10-10 19:27:11.193 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 2400 global_step 32816Loss 0.2229 Accuracy 0.8884
+2025-10-10 19:27:17.584 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 2500 global_step 32916Loss 0.2236 Accuracy 0.8881
+2025-10-10 19:27:25.771 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 2600 global_step 33016Loss 0.2242 Accuracy 0.8878
+2025-10-10 19:27:34.237 | INFO     | __main__:train_model:1230 - Epoch 12 Batch 2700 global_step 33116Loss 0.2250 Accuracy 0.8875
+2025-10-10 19:27:39.172 | INFO     | __main__:train_model:1240 - Epoch 12 Loss 0.2253 Accuracy 0.8874
+2025-10-10 19:27:39.173 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 232.20 secs
+
+2025-10-10 19:27:45.938 | INFO     | __main__:train_model:1250 - Validation - Epoch 12 Loss: 0.3522, Accuracy: 0.8553
+
+2025-10-10 19:27:48.341 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 0 global_step 33181Loss 0.1438 Accuracy 0.9371
+2025-10-10 19:27:56.547 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 100 global_step 33281Loss 0.1757 Accuracy 0.9080
+2025-10-10 19:28:05.880 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 200 global_step 33381Loss 0.1777 Accuracy 0.9062
+2025-10-10 19:28:14.208 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 300 global_step 33481Loss 0.1782 Accuracy 0.9050
+2025-10-10 19:28:21.301 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 400 global_step 33581Loss 0.1803 Accuracy 0.9042
+2025-10-10 19:28:30.132 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 500 global_step 33681Loss 0.1803 Accuracy 0.9038
+2025-10-10 19:28:39.102 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 600 global_step 33781Loss 0.1805 Accuracy 0.9037
+2025-10-10 19:28:46.763 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 700 global_step 33881Loss 0.1820 Accuracy 0.9033
+2025-10-10 19:28:54.471 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 800 global_step 33981Loss 0.1837 Accuracy 0.9025
+2025-10-10 19:29:03.492 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 900 global_step 34081Loss 0.1855 Accuracy 0.9016
+2025-10-10 19:29:12.451 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1000 global_step 34181Loss 0.1875 Accuracy 0.9010
+2025-10-10 19:29:20.146 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1100 global_step 34281Loss 0.1884 Accuracy 0.9006
+2025-10-10 19:29:27.533 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1200 global_step 34381Loss 0.1899 Accuracy 0.9000
+2025-10-10 19:29:35.606 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1300 global_step 34481Loss 0.1913 Accuracy 0.8994
+2025-10-10 19:29:44.887 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1400 global_step 34581Loss 0.1926 Accuracy 0.8989
+2025-10-10 19:29:51.850 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1500 global_step 34681Loss 0.1936 Accuracy 0.8985
+2025-10-10 19:29:58.961 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1600 global_step 34781Loss 0.1942 Accuracy 0.8982
+2025-10-10 19:30:08.480 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1700 global_step 34881Loss 0.1955 Accuracy 0.8975
+2025-10-10 19:30:16.858 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1800 global_step 34981Loss 0.1966 Accuracy 0.8971
+2025-10-10 19:30:24.050 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 1900 global_step 35081Loss 0.1982 Accuracy 0.8965
+2025-10-10 19:30:31.495 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 2000 global_step 35181Loss 0.1990 Accuracy 0.8962
+2025-10-10 19:30:39.532 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 2100 global_step 35281Loss 0.1999 Accuracy 0.8957
+2025-10-10 19:30:48.123 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 2200 global_step 35381Loss 0.2007 Accuracy 0.8954
+2025-10-10 19:30:56.865 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 2300 global_step 35481Loss 0.2017 Accuracy 0.8951
+2025-10-10 19:31:06.110 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 2400 global_step 35581Loss 0.2023 Accuracy 0.8948
+2025-10-10 19:31:15.130 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 2500 global_step 35681Loss 0.2032 Accuracy 0.8945
+2025-10-10 19:31:24.023 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 2600 global_step 35781Loss 0.2044 Accuracy 0.8941
+2025-10-10 19:31:30.196 | INFO     | __main__:train_model:1230 - Epoch 13 Batch 2700 global_step 35881Loss 0.2053 Accuracy 0.8937
+2025-10-10 19:31:34.166 | INFO     | __main__:train_model:1240 - Epoch 13 Loss 0.2061 Accuracy 0.8933
+2025-10-10 19:31:34.167 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 225.90 secs
+
+2025-10-10 19:31:42.085 | INFO     | __main__:train_model:1250 - Validation - Epoch 13 Loss: 0.3491, Accuracy: 0.8565
+
+2025-10-10 19:31:44.301 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 0 global_step 35946Loss 0.1740 Accuracy 0.9168
+2025-10-10 19:31:51.051 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 100 global_step 36046Loss 0.1545 Accuracy 0.9145
+2025-10-10 19:31:57.635 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 200 global_step 36146Loss 0.1604 Accuracy 0.9111
+2025-10-10 19:32:03.767 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 300 global_step 36246Loss 0.1612 Accuracy 0.9106
+2025-10-10 19:32:10.857 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 400 global_step 36346Loss 0.1624 Accuracy 0.9103
+2025-10-10 19:32:17.512 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 500 global_step 36446Loss 0.1647 Accuracy 0.9095
+2025-10-10 19:32:23.533 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 600 global_step 36546Loss 0.1671 Accuracy 0.9087
+2025-10-10 19:32:29.870 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 700 global_step 36646Loss 0.1693 Accuracy 0.9077
+2025-10-10 19:32:36.019 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 800 global_step 36746Loss 0.1710 Accuracy 0.9068
+2025-10-10 19:32:43.005 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 900 global_step 36846Loss 0.1724 Accuracy 0.9061
+2025-10-10 19:32:49.151 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1000 global_step 36946Loss 0.1736 Accuracy 0.9053
+2025-10-10 19:32:55.650 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1100 global_step 37046Loss 0.1755 Accuracy 0.9043
+2025-10-10 19:33:02.544 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1200 global_step 37146Loss 0.1771 Accuracy 0.9037
+2025-10-10 19:33:09.127 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1300 global_step 37246Loss 0.1785 Accuracy 0.9031
+2025-10-10 19:33:15.326 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1400 global_step 37346Loss 0.1801 Accuracy 0.9024
+2025-10-10 19:33:21.916 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1500 global_step 37446Loss 0.1820 Accuracy 0.9017
+2025-10-10 19:33:28.454 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1600 global_step 37546Loss 0.1833 Accuracy 0.9011
+2025-10-10 19:33:34.955 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1700 global_step 37646Loss 0.1850 Accuracy 0.9004
+2025-10-10 19:33:41.056 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1800 global_step 37746Loss 0.1862 Accuracy 0.9000
+2025-10-10 19:33:47.138 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 1900 global_step 37846Loss 0.1871 Accuracy 0.8996
+2025-10-10 19:33:53.884 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 2000 global_step 37946Loss 0.1885 Accuracy 0.8991
+2025-10-10 19:34:00.295 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 2100 global_step 38046Loss 0.1895 Accuracy 0.8988
+2025-10-10 19:34:06.516 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 2200 global_step 38146Loss 0.1903 Accuracy 0.8984
+2025-10-10 19:34:12.621 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 2300 global_step 38246Loss 0.1913 Accuracy 0.8979
+2025-10-10 19:34:19.634 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 2400 global_step 38346Loss 0.1924 Accuracy 0.8974
+2025-10-10 19:34:26.524 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 2500 global_step 38446Loss 0.1938 Accuracy 0.8968
+2025-10-10 19:34:32.803 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 2600 global_step 38546Loss 0.1951 Accuracy 0.8964
+2025-10-10 19:34:39.045 | INFO     | __main__:train_model:1230 - Epoch 14 Batch 2700 global_step 38646Loss 0.1961 Accuracy 0.8961
+2025-10-10 19:34:43.308 | INFO     | __main__:train_model:1240 - Epoch 14 Loss 0.1969 Accuracy 0.8958
+2025-10-10 19:34:43.308 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 179.08 secs
+
+2025-10-10 19:34:51.361 | INFO     | __main__:train_model:1250 - Validation - Epoch 14 Loss: 0.3568, Accuracy: 0.8562
+
+2025-10-10 19:34:53.926 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 0 global_step 38711Loss 0.1116 Accuracy 0.9210
+2025-10-10 19:35:00.031 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 100 global_step 38811Loss 0.1514 Accuracy 0.9149
+2025-10-10 19:35:06.001 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 200 global_step 38911Loss 0.1541 Accuracy 0.9132
+2025-10-10 19:35:12.195 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 300 global_step 39011Loss 0.1554 Accuracy 0.9126
+2025-10-10 19:35:18.940 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 400 global_step 39111Loss 0.1596 Accuracy 0.9108
+2025-10-10 19:35:25.435 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 500 global_step 39211Loss 0.1619 Accuracy 0.9100
+2025-10-10 19:35:31.863 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 600 global_step 39311Loss 0.1642 Accuracy 0.9093
+2025-10-10 19:35:38.758 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 700 global_step 39411Loss 0.1663 Accuracy 0.9084
+2025-10-10 19:35:45.413 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 800 global_step 39511Loss 0.1681 Accuracy 0.9074
+2025-10-10 19:35:51.689 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 900 global_step 39611Loss 0.1698 Accuracy 0.9066
+2025-10-10 19:35:57.853 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1000 global_step 39711Loss 0.1708 Accuracy 0.9059
+2025-10-10 19:36:04.468 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1100 global_step 39811Loss 0.1721 Accuracy 0.9050
+2025-10-10 19:36:11.071 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1200 global_step 39911Loss 0.1737 Accuracy 0.9043
+2025-10-10 19:36:17.549 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1300 global_step 40011Loss 0.1749 Accuracy 0.9038
+2025-10-10 19:36:23.747 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1400 global_step 40111Loss 0.1760 Accuracy 0.9032
+2025-10-10 19:36:30.042 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1500 global_step 40211Loss 0.1773 Accuracy 0.9027
+2025-10-10 19:36:36.808 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1600 global_step 40311Loss 0.1789 Accuracy 0.9020
+2025-10-10 19:36:42.999 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1700 global_step 40411Loss 0.1803 Accuracy 0.9014
+2025-10-10 19:36:49.297 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1800 global_step 40511Loss 0.1816 Accuracy 0.9009
+2025-10-10 19:36:55.963 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 1900 global_step 40611Loss 0.1835 Accuracy 0.9002
+2025-10-10 19:37:02.408 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 2000 global_step 40711Loss 0.1848 Accuracy 0.8995
+2025-10-10 19:37:08.679 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 2100 global_step 40811Loss 0.1860 Accuracy 0.8992
+2025-10-10 19:37:15.083 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 2200 global_step 40911Loss 0.1876 Accuracy 0.8986
+2025-10-10 19:37:21.885 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 2300 global_step 41011Loss 0.1889 Accuracy 0.8979
+2025-10-10 19:37:28.635 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 2400 global_step 41111Loss 0.1897 Accuracy 0.8975
+2025-10-10 19:37:34.601 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 2500 global_step 41211Loss 0.1909 Accuracy 0.8970
+2025-10-10 19:37:40.803 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 2600 global_step 41311Loss 0.1921 Accuracy 0.8965
+2025-10-10 19:37:48.312 | INFO     | __main__:train_model:1230 - Epoch 15 Batch 2700 global_step 41411Loss 0.1931 Accuracy 0.8960
+2025-10-10 19:37:52.754 | INFO     | __main__:train_model:1240 - Epoch 15 Loss 0.1936 Accuracy 0.8958
+2025-10-10 19:37:52.754 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 178.91 secs
+
+2025-10-10 19:38:00.600 | INFO     | __main__:train_model:1250 - Validation - Epoch 15 Loss: 0.3660, Accuracy: 0.8545
+
+2025-10-10 19:38:03.125 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 0 global_step 41476Loss 0.1244 Accuracy 0.9330
+2025-10-10 19:38:09.694 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 100 global_step 41576Loss 0.1551 Accuracy 0.9114
+2025-10-10 19:38:16.020 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 200 global_step 41676Loss 0.1595 Accuracy 0.9106
+2025-10-10 19:38:22.503 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 300 global_step 41776Loss 0.1613 Accuracy 0.9096
+2025-10-10 19:38:28.829 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 400 global_step 41876Loss 0.1633 Accuracy 0.9087
+2025-10-10 19:38:34.810 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 500 global_step 41976Loss 0.1648 Accuracy 0.9082
+2025-10-10 19:38:41.277 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 600 global_step 42076Loss 0.1667 Accuracy 0.9073
+2025-10-10 19:38:47.772 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 700 global_step 42176Loss 0.1676 Accuracy 0.9067
+2025-10-10 19:38:54.217 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 800 global_step 42276Loss 0.1699 Accuracy 0.9057
+2025-10-10 19:39:00.283 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 900 global_step 42376Loss 0.1711 Accuracy 0.9052
+2025-10-10 19:39:06.442 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1000 global_step 42476Loss 0.1721 Accuracy 0.9047
+2025-10-10 19:39:12.964 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1100 global_step 42576Loss 0.1743 Accuracy 0.9035
+2025-10-10 19:39:19.497 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1200 global_step 42676Loss 0.1758 Accuracy 0.9028
+2025-10-10 19:39:25.573 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1300 global_step 42776Loss 0.1771 Accuracy 0.9023
+2025-10-10 19:39:31.555 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1400 global_step 42876Loss 0.1785 Accuracy 0.9017
+2025-10-10 19:39:37.858 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1500 global_step 42976Loss 0.1805 Accuracy 0.9008
+2025-10-10 19:39:44.188 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1600 global_step 43076Loss 0.1818 Accuracy 0.9004
+2025-10-10 19:39:50.088 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1700 global_step 43176Loss 0.1830 Accuracy 0.8998
+2025-10-10 19:39:56.099 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1800 global_step 43276Loss 0.1842 Accuracy 0.8993
+2025-10-10 19:40:02.582 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 1900 global_step 43376Loss 0.1858 Accuracy 0.8986
+2025-10-10 19:40:09.224 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 2000 global_step 43476Loss 0.1872 Accuracy 0.8981
+2025-10-10 19:40:15.188 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 2100 global_step 43576Loss 0.1888 Accuracy 0.8976
+2025-10-10 19:40:21.241 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 2200 global_step 43676Loss 0.1902 Accuracy 0.8971
+2025-10-10 19:40:27.723 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 2300 global_step 43776Loss 0.1910 Accuracy 0.8967
+2025-10-10 19:40:34.234 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 2400 global_step 43876Loss 0.1924 Accuracy 0.8961
+2025-10-10 19:40:40.237 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 2500 global_step 43976Loss 0.1936 Accuracy 0.8955
+2025-10-10 19:40:46.128 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 2600 global_step 44076Loss 0.1949 Accuracy 0.8949
+2025-10-10 19:40:52.262 | INFO     | __main__:train_model:1230 - Epoch 16 Batch 2700 global_step 44176Loss 0.1960 Accuracy 0.8945
+2025-10-10 19:40:56.306 | INFO     | __main__:train_model:1240 - Epoch 16 Loss 0.1966 Accuracy 0.8942
+2025-10-10 19:40:56.306 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 173.26 secs
+
+2025-10-10 19:41:03.424 | INFO     | __main__:train_model:1250 - Validation - Epoch 16 Loss: 0.3628, Accuracy: 0.8558
+
+2025-10-10 19:41:05.844 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 0 global_step 44241Loss 0.1398 Accuracy 0.9186
+2025-10-10 19:41:11.943 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 100 global_step 44341Loss 0.1554 Accuracy 0.9117
+2025-10-10 19:41:18.513 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 200 global_step 44441Loss 0.1593 Accuracy 0.9115
+2025-10-10 19:41:24.834 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 300 global_step 44541Loss 0.1650 Accuracy 0.9091
+2025-10-10 19:41:30.880 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 400 global_step 44641Loss 0.1669 Accuracy 0.9086
+2025-10-10 19:41:36.777 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 500 global_step 44741Loss 0.1670 Accuracy 0.9085
+2025-10-10 19:41:42.949 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 600 global_step 44841Loss 0.1701 Accuracy 0.9070
+2025-10-10 19:41:49.318 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 700 global_step 44941Loss 0.1724 Accuracy 0.9054
+2025-10-10 19:41:55.170 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 800 global_step 45041Loss 0.1744 Accuracy 0.9044
+2025-10-10 19:42:01.125 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 900 global_step 45141Loss 0.1760 Accuracy 0.9035
+2025-10-10 19:42:07.180 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1000 global_step 45241Loss 0.1775 Accuracy 0.9031
+2025-10-10 19:42:13.884 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1100 global_step 45341Loss 0.1789 Accuracy 0.9024
+2025-10-10 19:42:20.217 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1200 global_step 45441Loss 0.1809 Accuracy 0.9013
+2025-10-10 19:42:26.449 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1300 global_step 45541Loss 0.1819 Accuracy 0.9009
+2025-10-10 19:42:32.680 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1400 global_step 45641Loss 0.1832 Accuracy 0.9003
+2025-10-10 19:42:39.131 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1500 global_step 45741Loss 0.1846 Accuracy 0.8997
+2025-10-10 19:42:45.227 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1600 global_step 45841Loss 0.1860 Accuracy 0.8991
+2025-10-10 19:42:51.144 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1700 global_step 45941Loss 0.1869 Accuracy 0.8984
+2025-10-10 19:42:57.575 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1800 global_step 46041Loss 0.1886 Accuracy 0.8978
+2025-10-10 19:43:04.060 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 1900 global_step 46141Loss 0.1902 Accuracy 0.8971
+2025-10-10 19:43:10.212 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 2000 global_step 46241Loss 0.1914 Accuracy 0.8964
+2025-10-10 19:43:16.824 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 2100 global_step 46341Loss 0.1927 Accuracy 0.8958
+2025-10-10 19:43:23.229 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 2200 global_step 46441Loss 0.1935 Accuracy 0.8954
+2025-10-10 19:43:29.768 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 2300 global_step 46541Loss 0.1948 Accuracy 0.8948
+2025-10-10 19:43:36.139 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 2400 global_step 46641Loss 0.1958 Accuracy 0.8943
+2025-10-10 19:43:42.142 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 2500 global_step 46741Loss 0.1968 Accuracy 0.8939
+2025-10-10 19:43:48.085 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 2600 global_step 46841Loss 0.1981 Accuracy 0.8934
+2025-10-10 19:43:54.533 | INFO     | __main__:train_model:1230 - Epoch 17 Batch 2700 global_step 46941Loss 0.1992 Accuracy 0.8929
+2025-10-10 19:43:58.542 | INFO     | __main__:train_model:1240 - Epoch 17 Loss 0.1999 Accuracy 0.8926
+2025-10-10 19:43:58.542 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 172.78 secs
+
+2025-10-10 19:44:05.005 | INFO     | __main__:train_model:1250 - Validation - Epoch 17 Loss: 0.3630, Accuracy: 0.8572
+
+2025-10-10 19:44:07.749 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 0 global_step 47006Loss 0.1501 Accuracy 0.9125
+2025-10-10 19:44:13.726 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 100 global_step 47106Loss 0.1652 Accuracy 0.9086
+2025-10-10 19:44:20.232 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 200 global_step 47206Loss 0.1649 Accuracy 0.9080
+2025-10-10 19:44:26.537 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 300 global_step 47306Loss 0.1680 Accuracy 0.9071
+2025-10-10 19:44:32.804 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 400 global_step 47406Loss 0.1716 Accuracy 0.9052
+2025-10-10 19:44:38.858 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 500 global_step 47506Loss 0.1742 Accuracy 0.9043
+2025-10-10 19:44:45.286 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 600 global_step 47606Loss 0.1768 Accuracy 0.9028
+2025-10-10 19:44:51.700 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 700 global_step 47706Loss 0.1795 Accuracy 0.9017
+2025-10-10 19:44:57.656 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 800 global_step 47806Loss 0.1813 Accuracy 0.9008
+2025-10-10 19:45:03.823 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 900 global_step 47906Loss 0.1843 Accuracy 0.8995
+2025-10-10 19:45:10.353 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1000 global_step 48006Loss 0.1854 Accuracy 0.8989
+2025-10-10 19:45:16.520 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1100 global_step 48106Loss 0.1870 Accuracy 0.8982
+2025-10-10 19:45:22.523 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1200 global_step 48206Loss 0.1877 Accuracy 0.8973
+2025-10-10 19:45:28.495 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1300 global_step 48306Loss 0.1888 Accuracy 0.8969
+2025-10-10 19:45:34.621 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1400 global_step 48406Loss 0.1904 Accuracy 0.8963
+2025-10-10 19:45:41.147 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1500 global_step 48506Loss 0.1914 Accuracy 0.8958
+2025-10-10 19:45:47.269 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1600 global_step 48606Loss 0.1930 Accuracy 0.8950
+2025-10-10 19:45:53.250 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1700 global_step 48706Loss 0.1944 Accuracy 0.8943
+2025-10-10 19:45:59.464 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1800 global_step 48806Loss 0.1959 Accuracy 0.8939
+2025-10-10 19:46:05.955 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 1900 global_step 48906Loss 0.1975 Accuracy 0.8933
+2025-10-10 19:46:11.883 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 2000 global_step 49006Loss 0.1984 Accuracy 0.8928
+2025-10-10 19:46:17.982 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 2100 global_step 49106Loss 0.1991 Accuracy 0.8924
+2025-10-10 19:46:24.183 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 2200 global_step 49206Loss 0.2002 Accuracy 0.8920
+2025-10-10 19:46:30.145 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 2300 global_step 49306Loss 0.2012 Accuracy 0.8916
+2025-10-10 19:46:36.265 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 2400 global_step 49406Loss 0.2025 Accuracy 0.8911
+2025-10-10 19:46:42.429 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 2500 global_step 49506Loss 0.2038 Accuracy 0.8906
+2025-10-10 19:46:48.844 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 2600 global_step 49606Loss 0.2050 Accuracy 0.8902
+2025-10-10 19:46:55.393 | INFO     | __main__:train_model:1230 - Epoch 18 Batch 2700 global_step 49706Loss 0.2062 Accuracy 0.8897
+2025-10-10 19:46:59.310 | INFO     | __main__:train_model:1240 - Epoch 18 Loss 0.2067 Accuracy 0.8895
+2025-10-10 19:46:59.310 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 171.64 secs
+
+2025-10-10 19:47:05.915 | INFO     | __main__:train_model:1250 - Validation - Epoch 18 Loss: 0.3694, Accuracy: 0.8554
+
+2025-10-10 19:47:08.421 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 0 global_step 49771Loss 0.1667 Accuracy 0.9064
+2025-10-10 19:47:14.657 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 100 global_step 49871Loss 0.1764 Accuracy 0.9037
+2025-10-10 19:47:21.253 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 200 global_step 49971Loss 0.1775 Accuracy 0.9033
+2025-10-10 19:47:27.333 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 300 global_step 50071Loss 0.1790 Accuracy 0.9017
+2025-10-10 19:47:33.213 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 400 global_step 50171Loss 0.1796 Accuracy 0.9006
+2025-10-10 19:47:39.194 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 500 global_step 50271Loss 0.1810 Accuracy 0.8998
+2025-10-10 19:47:45.279 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 600 global_step 50371Loss 0.1813 Accuracy 0.8993
+2025-10-10 19:47:51.498 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 700 global_step 50471Loss 0.1838 Accuracy 0.8983
+2025-10-10 19:47:57.299 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 800 global_step 50571Loss 0.1864 Accuracy 0.8976
+2025-10-10 19:48:03.632 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 900 global_step 50671Loss 0.1873 Accuracy 0.8973
+2025-10-10 19:48:10.033 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1000 global_step 50771Loss 0.1890 Accuracy 0.8965
+2025-10-10 19:48:16.038 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1100 global_step 50871Loss 0.1906 Accuracy 0.8960
+2025-10-10 19:48:22.178 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1200 global_step 50971Loss 0.1920 Accuracy 0.8953
+2025-10-10 19:48:28.803 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1300 global_step 51071Loss 0.1942 Accuracy 0.8946
+2025-10-10 19:48:35.329 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1400 global_step 51171Loss 0.1956 Accuracy 0.8940
+2025-10-10 19:48:41.343 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1500 global_step 51271Loss 0.1972 Accuracy 0.8933
+2025-10-10 19:48:47.359 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1600 global_step 51371Loss 0.1984 Accuracy 0.8925
+2025-10-10 19:48:53.433 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1700 global_step 51471Loss 0.1999 Accuracy 0.8919
+2025-10-10 19:49:00.089 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1800 global_step 51571Loss 0.2011 Accuracy 0.8914
+2025-10-10 19:49:06.446 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 1900 global_step 51671Loss 0.2028 Accuracy 0.8908
+2025-10-10 19:49:12.422 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 2000 global_step 51771Loss 0.2040 Accuracy 0.8903
+2025-10-10 19:49:18.615 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 2100 global_step 51871Loss 0.2052 Accuracy 0.8898
+2025-10-10 19:49:24.865 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 2200 global_step 51971Loss 0.2063 Accuracy 0.8894
+2025-10-10 19:49:31.095 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 2300 global_step 52071Loss 0.2076 Accuracy 0.8890
+2025-10-10 19:49:36.954 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 2400 global_step 52171Loss 0.2088 Accuracy 0.8886
+2025-10-10 19:49:43.002 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 2500 global_step 52271Loss 0.2098 Accuracy 0.8881
+2025-10-10 19:49:49.297 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 2600 global_step 52371Loss 0.2114 Accuracy 0.8875
+2025-10-10 19:49:55.495 | INFO     | __main__:train_model:1230 - Epoch 19 Batch 2700 global_step 52471Loss 0.2124 Accuracy 0.8872
+2025-10-10 19:49:59.306 | INFO     | __main__:train_model:1240 - Epoch 19 Loss 0.2132 Accuracy 0.8869
+2025-10-10 19:49:59.306 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 170.96 secs
+
+2025-10-10 19:50:05.851 | INFO     | __main__:train_model:1250 - Validation - Epoch 19 Loss: 0.3674, Accuracy: 0.8541
+
+2025-10-10 19:50:08.425 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 0 global_step 52536Loss 0.1643 Accuracy 0.9043
+2025-10-10 19:50:14.607 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 100 global_step 52636Loss 0.1768 Accuracy 0.9035
+2025-10-10 19:50:21.073 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 200 global_step 52736Loss 0.1793 Accuracy 0.9012
+2025-10-10 19:50:27.179 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 300 global_step 52836Loss 0.1787 Accuracy 0.9011
+2025-10-10 19:50:33.207 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 400 global_step 52936Loss 0.1814 Accuracy 0.8998
+2025-10-10 19:50:39.578 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 500 global_step 53036Loss 0.1846 Accuracy 0.8991
+2025-10-10 19:50:46.085 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 600 global_step 53136Loss 0.1871 Accuracy 0.8979
+2025-10-10 19:50:52.019 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 700 global_step 53236Loss 0.1881 Accuracy 0.8971
+2025-10-10 19:50:58.166 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 800 global_step 53336Loss 0.1912 Accuracy 0.8962
+2025-10-10 19:51:04.375 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 900 global_step 53436Loss 0.1920 Accuracy 0.8954
+2025-10-10 19:51:10.660 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1000 global_step 53536Loss 0.1926 Accuracy 0.8950
+2025-10-10 19:51:16.529 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1100 global_step 53636Loss 0.1945 Accuracy 0.8942
+2025-10-10 19:51:22.596 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1200 global_step 53736Loss 0.1958 Accuracy 0.8935
+2025-10-10 19:51:28.624 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1300 global_step 53836Loss 0.1974 Accuracy 0.8930
+2025-10-10 19:51:34.690 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1400 global_step 53936Loss 0.1994 Accuracy 0.8922
+2025-10-10 19:51:40.672 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1500 global_step 54036Loss 0.2014 Accuracy 0.8915
+2025-10-10 19:51:46.717 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1600 global_step 54136Loss 0.2027 Accuracy 0.8908
+2025-10-10 19:51:53.077 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1700 global_step 54236Loss 0.2041 Accuracy 0.8901
+2025-10-10 19:51:59.556 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1800 global_step 54336Loss 0.2052 Accuracy 0.8896
+2025-10-10 19:52:05.911 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 1900 global_step 54436Loss 0.2063 Accuracy 0.8891
+2025-10-10 19:52:12.042 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 2000 global_step 54536Loss 0.2078 Accuracy 0.8886
+2025-10-10 19:52:18.383 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 2100 global_step 54636Loss 0.2087 Accuracy 0.8881
+2025-10-10 19:52:24.831 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 2200 global_step 54736Loss 0.2099 Accuracy 0.8876
+2025-10-10 19:52:31.191 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 2300 global_step 54836Loss 0.2110 Accuracy 0.8873
+2025-10-10 19:52:37.166 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 2400 global_step 54936Loss 0.2125 Accuracy 0.8869
+2025-10-10 19:52:43.200 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 2500 global_step 55036Loss 0.2140 Accuracy 0.8863
+2025-10-10 19:52:49.547 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 2600 global_step 55136Loss 0.2152 Accuracy 0.8857
+2025-10-10 19:52:55.984 | INFO     | __main__:train_model:1230 - Epoch 20 Batch 2700 global_step 55236Loss 0.2163 Accuracy 0.8854
+2025-10-10 19:52:59.939 | INFO     | __main__:train_model:1240 - Epoch 20 Loss 0.2172 Accuracy 0.8850
+2025-10-10 19:52:59.939 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 171.59 secs
+
+2025-10-10 19:53:07.087 | INFO     | __main__:train_model:1250 - Validation - Epoch 20 Loss: 0.3804, Accuracy: 0.8473
+
+2025-10-10 19:53:09.667 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 0 global_step 55301Loss 0.2238 Accuracy 0.8806
+2025-10-10 19:53:16.171 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 100 global_step 55401Loss 0.1809 Accuracy 0.8997
+2025-10-10 19:53:22.968 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 200 global_step 55501Loss 0.1824 Accuracy 0.9000
+2025-10-10 19:53:29.264 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 300 global_step 55601Loss 0.1874 Accuracy 0.8988
+2025-10-10 19:53:35.500 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 400 global_step 55701Loss 0.1890 Accuracy 0.8974
+2025-10-10 19:53:42.262 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 500 global_step 55801Loss 0.1908 Accuracy 0.8967
+2025-10-10 19:53:48.582 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 600 global_step 55901Loss 0.1933 Accuracy 0.8959
+2025-10-10 19:53:54.657 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 700 global_step 56001Loss 0.1947 Accuracy 0.8951
+2025-10-10 19:54:01.246 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 800 global_step 56101Loss 0.1962 Accuracy 0.8939
+2025-10-10 19:54:07.611 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 900 global_step 56201Loss 0.1974 Accuracy 0.8931
+2025-10-10 19:54:13.892 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1000 global_step 56301Loss 0.1994 Accuracy 0.8919
+2025-10-10 19:54:19.773 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1100 global_step 56401Loss 0.2007 Accuracy 0.8915
+2025-10-10 19:54:25.675 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1200 global_step 56501Loss 0.2028 Accuracy 0.8909
+2025-10-10 19:54:31.929 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1300 global_step 56601Loss 0.2047 Accuracy 0.8900
+2025-10-10 19:54:38.425 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1400 global_step 56701Loss 0.2063 Accuracy 0.8892
+2025-10-10 19:54:44.708 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1500 global_step 56801Loss 0.2073 Accuracy 0.8888
+2025-10-10 19:54:50.717 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1600 global_step 56901Loss 0.2088 Accuracy 0.8882
+2025-10-10 19:54:57.157 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1700 global_step 57001Loss 0.2101 Accuracy 0.8875
+2025-10-10 19:55:03.633 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1800 global_step 57101Loss 0.2113 Accuracy 0.8871
+2025-10-10 19:55:09.817 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 1900 global_step 57201Loss 0.2120 Accuracy 0.8867
+2025-10-10 19:55:15.855 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 2000 global_step 57301Loss 0.2130 Accuracy 0.8862
+2025-10-10 19:55:22.326 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 2100 global_step 57401Loss 0.2143 Accuracy 0.8858
+2025-10-10 19:55:28.873 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 2200 global_step 57501Loss 0.2156 Accuracy 0.8853
+2025-10-10 19:55:34.924 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 2300 global_step 57601Loss 0.2167 Accuracy 0.8848
+2025-10-10 19:55:40.920 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 2400 global_step 57701Loss 0.2182 Accuracy 0.8844
+2025-10-10 19:55:47.064 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 2500 global_step 57801Loss 0.2193 Accuracy 0.8839
+2025-10-10 19:55:53.313 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 2600 global_step 57901Loss 0.2204 Accuracy 0.8835
+2025-10-10 19:55:59.401 | INFO     | __main__:train_model:1230 - Epoch 21 Batch 2700 global_step 58001Loss 0.2216 Accuracy 0.8830
+2025-10-10 19:56:03.185 | INFO     | __main__:train_model:1240 - Epoch 21 Loss 0.2221 Accuracy 0.8828
+2025-10-10 19:56:03.185 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 173.61 secs
+
+2025-10-10 19:56:09.622 | INFO     | __main__:train_model:1250 - Validation - Epoch 21 Loss: 0.3669, Accuracy: 0.8523
+
+2025-10-10 19:56:12.206 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 0 global_step 58066Loss 0.1933 Accuracy 0.8942
+2025-10-10 19:56:18.707 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 100 global_step 58166Loss 0.1878 Accuracy 0.8979
+2025-10-10 19:56:24.871 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 200 global_step 58266Loss 0.1886 Accuracy 0.8976
+2025-10-10 19:56:30.864 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 300 global_step 58366Loss 0.1903 Accuracy 0.8970
+2025-10-10 19:56:37.105 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 400 global_step 58466Loss 0.1915 Accuracy 0.8961
+2025-10-10 19:56:43.285 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 500 global_step 58566Loss 0.1939 Accuracy 0.8953
+2025-10-10 19:56:49.417 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 600 global_step 58666Loss 0.1954 Accuracy 0.8946
+2025-10-10 19:56:55.433 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 700 global_step 58766Loss 0.1971 Accuracy 0.8941
+2025-10-10 19:57:01.743 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 800 global_step 58866Loss 0.1990 Accuracy 0.8932
+2025-10-10 19:57:08.088 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 900 global_step 58966Loss 0.2005 Accuracy 0.8924
+2025-10-10 19:57:14.426 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1000 global_step 59066Loss 0.2014 Accuracy 0.8917
+2025-10-10 19:57:20.733 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1100 global_step 59166Loss 0.2022 Accuracy 0.8912
+2025-10-10 19:57:26.723 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1200 global_step 59266Loss 0.2035 Accuracy 0.8904
+2025-10-10 19:57:32.921 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1300 global_step 59366Loss 0.2047 Accuracy 0.8897
+2025-10-10 19:57:39.287 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1400 global_step 59466Loss 0.2059 Accuracy 0.8890
+2025-10-10 19:57:45.295 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1500 global_step 59566Loss 0.2076 Accuracy 0.8883
+2025-10-10 19:57:51.430 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1600 global_step 59666Loss 0.2091 Accuracy 0.8877
+2025-10-10 19:57:57.766 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1700 global_step 59766Loss 0.2106 Accuracy 0.8872
+2025-10-10 19:58:04.189 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1800 global_step 59866Loss 0.2116 Accuracy 0.8868
+2025-10-10 19:58:10.190 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 1900 global_step 59966Loss 0.2125 Accuracy 0.8865
+2025-10-10 19:58:16.291 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 2000 global_step 60066Loss 0.2133 Accuracy 0.8861
+2025-10-10 19:58:22.740 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 2100 global_step 60166Loss 0.2143 Accuracy 0.8858
+2025-10-10 19:58:29.035 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 2200 global_step 60266Loss 0.2153 Accuracy 0.8854
+2025-10-10 19:58:35.107 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 2300 global_step 60366Loss 0.2163 Accuracy 0.8850
+2025-10-10 19:58:41.213 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 2400 global_step 60466Loss 0.2178 Accuracy 0.8844
+2025-10-10 19:58:47.882 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 2500 global_step 60566Loss 0.2189 Accuracy 0.8840
+2025-10-10 19:58:54.111 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 2600 global_step 60666Loss 0.2203 Accuracy 0.8836
+2025-10-10 19:59:00.150 | INFO     | __main__:train_model:1230 - Epoch 22 Batch 2700 global_step 60766Loss 0.2214 Accuracy 0.8832
+2025-10-10 19:59:04.073 | INFO     | __main__:train_model:1240 - Epoch 22 Loss 0.2222 Accuracy 0.8829
+2025-10-10 19:59:04.073 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 171.96 secs
+
+2025-10-10 19:59:10.522 | INFO     | __main__:train_model:1250 - Validation - Epoch 22 Loss: 0.3668, Accuracy: 0.8543
+
+2025-10-10 19:59:13.467 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 0 global_step 60831Loss 0.1354 Accuracy 0.9146
+2025-10-10 19:59:19.939 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 100 global_step 60931Loss 0.1796 Accuracy 0.8998
+2025-10-10 19:59:26.073 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 200 global_step 61031Loss 0.1821 Accuracy 0.8993
+2025-10-10 19:59:32.032 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 300 global_step 61131Loss 0.1865 Accuracy 0.8971
+2025-10-10 19:59:38.376 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 400 global_step 61231Loss 0.1910 Accuracy 0.8952
+2025-10-10 19:59:44.920 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 500 global_step 61331Loss 0.1939 Accuracy 0.8938
+2025-10-10 19:59:51.033 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 600 global_step 61431Loss 0.1973 Accuracy 0.8925
+2025-10-10 19:59:57.152 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 700 global_step 61531Loss 0.2004 Accuracy 0.8913
+2025-10-10 20:00:03.334 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 800 global_step 61631Loss 0.2060 Accuracy 0.8893
+2025-10-10 20:00:09.665 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 900 global_step 61731Loss 0.2066 Accuracy 0.8889
+2025-10-10 20:00:15.716 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1000 global_step 61831Loss 0.2079 Accuracy 0.8885
+2025-10-10 20:00:22.129 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1100 global_step 61931Loss 0.2086 Accuracy 0.8881
+2025-10-10 20:00:28.666 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1200 global_step 62031Loss 0.2093 Accuracy 0.8878
+2025-10-10 20:00:35.056 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1300 global_step 62131Loss 0.2108 Accuracy 0.8874
+2025-10-10 20:00:41.222 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1400 global_step 62231Loss 0.2115 Accuracy 0.8869
+2025-10-10 20:00:47.136 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1500 global_step 62331Loss 0.2132 Accuracy 0.8862
+2025-10-10 20:00:53.331 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1600 global_step 62431Loss 0.2145 Accuracy 0.8857
+2025-10-10 20:00:59.737 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1700 global_step 62531Loss 0.2161 Accuracy 0.8852
+2025-10-10 20:01:05.951 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1800 global_step 62631Loss 0.2176 Accuracy 0.8846
+2025-10-10 20:01:11.863 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 1900 global_step 62731Loss 0.2184 Accuracy 0.8842
+2025-10-10 20:01:17.822 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 2000 global_step 62831Loss 0.2194 Accuracy 0.8838
+2025-10-10 20:01:24.134 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 2100 global_step 62931Loss 0.2205 Accuracy 0.8834
+2025-10-10 20:01:30.328 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 2200 global_step 63031Loss 0.2208 Accuracy 0.8833
+2025-10-10 20:01:36.286 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 2300 global_step 63131Loss 0.2217 Accuracy 0.8829
+2025-10-10 20:01:42.313 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 2400 global_step 63231Loss 0.2226 Accuracy 0.8825
+2025-10-10 20:01:48.591 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 2500 global_step 63331Loss 0.2236 Accuracy 0.8822
+2025-10-10 20:01:54.631 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 2600 global_step 63431Loss 0.2241 Accuracy 0.8820
+2025-10-10 20:02:00.644 | INFO     | __main__:train_model:1230 - Epoch 23 Batch 2700 global_step 63531Loss 0.2249 Accuracy 0.8816
+2025-10-10 20:02:04.571 | INFO     | __main__:train_model:1240 - Epoch 23 Loss 0.2255 Accuracy 0.8815
+2025-10-10 20:02:04.571 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 171.20 secs
+
+2025-10-10 20:02:11.354 | INFO     | __main__:train_model:1250 - Validation - Epoch 23 Loss: 0.3646, Accuracy: 0.8525
+
+2025-10-10 20:02:14.169 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 0 global_step 63596Loss 0.2184 Accuracy 0.8646
+2025-10-10 20:02:20.633 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 100 global_step 63696Loss 0.1805 Accuracy 0.8995
+2025-10-10 20:02:26.705 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 200 global_step 63796Loss 0.1841 Accuracy 0.8979
+2025-10-10 20:02:32.705 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 300 global_step 63896Loss 0.1853 Accuracy 0.8970
+2025-10-10 20:02:39.385 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 400 global_step 63996Loss 0.1880 Accuracy 0.8962
+2025-10-10 20:02:45.784 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 500 global_step 64096Loss 0.1901 Accuracy 0.8953
+2025-10-10 20:02:51.710 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 600 global_step 64196Loss 0.1929 Accuracy 0.8944
+2025-10-10 20:02:57.644 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 700 global_step 64296Loss 0.1946 Accuracy 0.8935
+2025-10-10 20:03:04.108 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 800 global_step 64396Loss 0.1970 Accuracy 0.8924
+2025-10-10 20:03:10.401 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 900 global_step 64496Loss 0.1984 Accuracy 0.8918
+2025-10-10 20:03:16.448 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1000 global_step 64596Loss 0.2012 Accuracy 0.8908
+2025-10-10 20:03:22.489 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1100 global_step 64696Loss 0.2034 Accuracy 0.8899
+2025-10-10 20:03:28.929 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1200 global_step 64796Loss 0.2044 Accuracy 0.8893
+2025-10-10 20:03:35.481 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1300 global_step 64896Loss 0.2059 Accuracy 0.8888
+2025-10-10 20:03:41.937 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1400 global_step 64996Loss 0.2078 Accuracy 0.8881
+2025-10-10 20:03:47.882 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1500 global_step 65096Loss 0.2091 Accuracy 0.8874
+2025-10-10 20:03:54.476 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1600 global_step 65196Loss 0.2108 Accuracy 0.8868
+2025-10-10 20:04:00.769 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1700 global_step 65296Loss 0.2121 Accuracy 0.8865
+2025-10-10 20:04:06.888 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1800 global_step 65396Loss 0.2135 Accuracy 0.8860
+2025-10-10 20:04:13.122 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 1900 global_step 65496Loss 0.2150 Accuracy 0.8854
+2025-10-10 20:04:19.461 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 2000 global_step 65596Loss 0.2162 Accuracy 0.8850
+2025-10-10 20:04:26.250 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 2100 global_step 65696Loss 0.2173 Accuracy 0.8845
+2025-10-10 20:04:32.600 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 2200 global_step 65796Loss 0.2183 Accuracy 0.8841
+2025-10-10 20:04:38.878 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 2300 global_step 65896Loss 0.2191 Accuracy 0.8839
+2025-10-10 20:04:45.092 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 2400 global_step 65996Loss 0.2205 Accuracy 0.8834
+2025-10-10 20:04:51.439 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 2500 global_step 66096Loss 0.2217 Accuracy 0.8831
+2025-10-10 20:04:57.689 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 2600 global_step 66196Loss 0.2225 Accuracy 0.8827
+2025-10-10 20:05:03.742 | INFO     | __main__:train_model:1230 - Epoch 24 Batch 2700 global_step 66296Loss 0.2231 Accuracy 0.8824
+2025-10-10 20:05:07.491 | INFO     | __main__:train_model:1240 - Epoch 24 Loss 0.2235 Accuracy 0.8823
+2025-10-10 20:05:07.491 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 173.41 secs
+
+2025-10-10 20:05:14.200 | INFO     | __main__:train_model:1250 - Validation - Epoch 24 Loss: 0.3604, Accuracy: 0.8567
+
+2025-10-10 20:05:16.877 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 0 global_step 66361Loss 0.1973 Accuracy 0.9104
+2025-10-10 20:05:23.137 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 100 global_step 66461Loss 0.1881 Accuracy 0.8997
+2025-10-10 20:05:29.514 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 200 global_step 66561Loss 0.1839 Accuracy 0.8996
+2025-10-10 20:05:35.518 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 300 global_step 66661Loss 0.1967 Accuracy 0.8945
+2025-10-10 20:05:42.103 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 400 global_step 66761Loss 0.2115 Accuracy 0.8888
+2025-10-10 20:05:48.644 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 500 global_step 66861Loss 0.2159 Accuracy 0.8874
+2025-10-10 20:05:54.861 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 600 global_step 66961Loss 0.2345 Accuracy 0.8804
+2025-10-10 20:06:00.844 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 700 global_step 67061Loss 0.2522 Accuracy 0.8735
+2025-10-10 20:06:07.374 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 800 global_step 67161Loss 0.2567 Accuracy 0.8712
+2025-10-10 20:06:13.612 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 900 global_step 67261Loss 0.2596 Accuracy 0.8698
+2025-10-10 20:06:19.679 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1000 global_step 67361Loss 0.2602 Accuracy 0.8693
+2025-10-10 20:06:25.655 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1100 global_step 67461Loss 0.2575 Accuracy 0.8705
+2025-10-10 20:06:31.937 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1200 global_step 67561Loss 0.2542 Accuracy 0.8714
+2025-10-10 20:06:38.355 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1300 global_step 67661Loss 0.2522 Accuracy 0.8720
+2025-10-10 20:06:44.491 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1400 global_step 67761Loss 0.2502 Accuracy 0.8724
+2025-10-10 20:06:50.433 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1500 global_step 67861Loss 0.2490 Accuracy 0.8728
+2025-10-10 20:06:56.679 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1600 global_step 67961Loss 0.2482 Accuracy 0.8732
+2025-10-10 20:07:03.207 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1700 global_step 68061Loss 0.2474 Accuracy 0.8735
+2025-10-10 20:07:09.098 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1800 global_step 68161Loss 0.2469 Accuracy 0.8737
+2025-10-10 20:07:15.073 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 1900 global_step 68261Loss 0.2464 Accuracy 0.8740
+2025-10-10 20:07:21.788 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 2000 global_step 68361Loss 0.2463 Accuracy 0.8740
+2025-10-10 20:07:28.278 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 2100 global_step 68461Loss 0.2458 Accuracy 0.8741
+2025-10-10 20:07:34.337 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 2200 global_step 68561Loss 0.2454 Accuracy 0.8742
+2025-10-10 20:07:40.301 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 2300 global_step 68661Loss 0.2450 Accuracy 0.8744
+2025-10-10 20:07:46.311 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 2400 global_step 68761Loss 0.2449 Accuracy 0.8744
+2025-10-10 20:07:52.802 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 2500 global_step 68861Loss 0.2450 Accuracy 0.8744
+2025-10-10 20:07:59.184 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 2600 global_step 68961Loss 0.2449 Accuracy 0.8745
+2025-10-10 20:08:05.146 | INFO     | __main__:train_model:1230 - Epoch 25 Batch 2700 global_step 69061Loss 0.2446 Accuracy 0.8744
+2025-10-10 20:08:09.124 | INFO     | __main__:train_model:1240 - Epoch 25 Loss 0.2445 Accuracy 0.8745
+2025-10-10 20:08:09.124 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 172.33 secs
+
+2025-10-10 20:08:16.786 | INFO     | __main__:train_model:1250 - Validation - Epoch 25 Loss: 0.3644, Accuracy: 0.8566
+
+2025-10-10 20:08:20.120 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 0 global_step 69126Loss 0.1671 Accuracy 0.9283
+2025-10-10 20:08:26.898 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 100 global_step 69226Loss 0.2375 Accuracy 0.8818
+2025-10-10 20:08:33.102 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 200 global_step 69326Loss 0.2328 Accuracy 0.8824
+2025-10-10 20:08:39.759 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 300 global_step 69426Loss 0.2199 Accuracy 0.8866
+2025-10-10 20:08:46.192 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 400 global_step 69526Loss 0.2152 Accuracy 0.8878
+2025-10-10 20:08:52.448 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 500 global_step 69626Loss 0.2145 Accuracy 0.8876
+2025-10-10 20:08:58.715 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 600 global_step 69726Loss 0.2127 Accuracy 0.8884
+2025-10-10 20:09:04.949 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 700 global_step 69826Loss 0.2114 Accuracy 0.8884
+2025-10-10 20:09:11.260 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 800 global_step 69926Loss 0.2106 Accuracy 0.8886
+2025-10-10 20:09:18.033 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 900 global_step 70026Loss 0.2110 Accuracy 0.8884
+2025-10-10 20:09:24.323 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1000 global_step 70126Loss 0.2134 Accuracy 0.8874
+2025-10-10 20:09:30.376 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1100 global_step 70226Loss 0.2218 Accuracy 0.8846
+2025-10-10 20:09:36.821 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1200 global_step 70326Loss 0.2315 Accuracy 0.8812
+2025-10-10 20:09:43.260 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1300 global_step 70426Loss 0.2350 Accuracy 0.8797
+2025-10-10 20:09:49.452 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1400 global_step 70526Loss 0.2361 Accuracy 0.8788
+2025-10-10 20:09:55.827 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1500 global_step 70626Loss 0.2391 Accuracy 0.8777
+2025-10-10 20:10:02.119 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1600 global_step 70726Loss 0.2394 Accuracy 0.8774
+2025-10-10 20:10:08.588 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1700 global_step 70826Loss 0.2395 Accuracy 0.8774
+2025-10-10 20:10:14.496 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1800 global_step 70926Loss 0.2437 Accuracy 0.8759
+2025-10-10 20:10:20.930 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 1900 global_step 71026Loss 0.2439 Accuracy 0.8756
+2025-10-10 20:10:27.524 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 2000 global_step 71126Loss 0.2434 Accuracy 0.8754
+2025-10-10 20:10:33.487 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 2100 global_step 71226Loss 0.2432 Accuracy 0.8753
+2025-10-10 20:10:39.243 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 2200 global_step 71326Loss 0.2432 Accuracy 0.8753
+2025-10-10 20:10:45.021 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 2300 global_step 71426Loss 0.2433 Accuracy 0.8752
+2025-10-10 20:10:50.768 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 2400 global_step 71526Loss 0.2440 Accuracy 0.8748
+2025-10-10 20:10:56.519 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 2500 global_step 71626Loss 0.2460 Accuracy 0.8741
+2025-10-10 20:11:02.224 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 2600 global_step 71726Loss 0.2470 Accuracy 0.8737
+2025-10-10 20:11:08.005 | INFO     | __main__:train_model:1230 - Epoch 26 Batch 2700 global_step 71826Loss 0.2479 Accuracy 0.8733
+2025-10-10 20:11:11.635 | INFO     | __main__:train_model:1240 - Epoch 26 Loss 0.2480 Accuracy 0.8732
+2025-10-10 20:11:11.635 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 171.63 secs
+
+2025-10-10 20:11:17.440 | INFO     | __main__:train_model:1250 - Validation - Epoch 26 Loss: 0.3590, Accuracy: 0.8537
+
+2025-10-10 20:11:19.935 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 0 global_step 71891Loss 0.1966 Accuracy 0.8950
+2025-10-10 20:11:25.640 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 100 global_step 71991Loss 0.1961 Accuracy 0.8925
+2025-10-10 20:11:31.298 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 200 global_step 72091Loss 0.2011 Accuracy 0.8905
+2025-10-10 20:11:37.020 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 300 global_step 72191Loss 0.2086 Accuracy 0.8878
+2025-10-10 20:11:42.730 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 400 global_step 72291Loss 0.2068 Accuracy 0.8881
+2025-10-10 20:11:48.406 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 500 global_step 72391Loss 0.2076 Accuracy 0.8881
+2025-10-10 20:11:54.075 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 600 global_step 72491Loss 0.2071 Accuracy 0.8884
+2025-10-10 20:11:59.843 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 700 global_step 72591Loss 0.2081 Accuracy 0.8884
+2025-10-10 20:12:05.668 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 800 global_step 72691Loss 0.2081 Accuracy 0.8881
+2025-10-10 20:12:11.385 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 900 global_step 72791Loss 0.2095 Accuracy 0.8876
+2025-10-10 20:12:17.088 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1000 global_step 72891Loss 0.2103 Accuracy 0.8870
+2025-10-10 20:12:22.913 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1100 global_step 72991Loss 0.2113 Accuracy 0.8867
+2025-10-10 20:12:28.660 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1200 global_step 73091Loss 0.2540 Accuracy 0.8717
+2025-10-10 20:12:34.356 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1300 global_step 73191Loss 0.3566 Accuracy 0.8352
+2025-10-10 20:12:40.025 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1400 global_step 73291Loss 0.4414 Accuracy 0.8045
+2025-10-10 20:12:45.904 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1500 global_step 73391Loss 0.5128 Accuracy 0.7785
+2025-10-10 20:12:51.583 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1600 global_step 73491Loss 0.5753 Accuracy 0.7556
+2025-10-10 20:12:57.295 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1700 global_step 73591Loss 0.6278 Accuracy 0.7360
+2025-10-10 20:13:02.966 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1800 global_step 73691Loss 0.6711 Accuracy 0.7185
+2025-10-10 20:13:08.717 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 1900 global_step 73791Loss 0.7137 Accuracy 0.7031
+2025-10-10 20:13:14.474 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 2000 global_step 73891Loss 0.7510 Accuracy 0.6892
+2025-10-10 20:13:20.198 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 2100 global_step 73991Loss 0.7843 Accuracy 0.6768
+2025-10-10 20:13:25.902 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 2200 global_step 74091Loss 0.8125 Accuracy 0.6655
+2025-10-10 20:13:31.603 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 2300 global_step 74191Loss 0.8385 Accuracy 0.6552
+2025-10-10 20:13:37.345 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 2400 global_step 74291Loss 0.8610 Accuracy 0.6461
+2025-10-10 20:13:43.067 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 2500 global_step 74391Loss 0.8824 Accuracy 0.6375
+2025-10-10 20:13:48.734 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 2600 global_step 74491Loss 0.9030 Accuracy 0.6299
+2025-10-10 20:13:54.398 | INFO     | __main__:train_model:1230 - Epoch 27 Batch 2700 global_step 74591Loss 0.9202 Accuracy 0.6228
+2025-10-10 20:13:58.036 | INFO     | __main__:train_model:1240 - Epoch 27 Loss 0.9305 Accuracy 0.6185
+2025-10-10 20:13:58.037 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 158.18 secs
+
+2025-10-10 20:14:03.877 | INFO     | __main__:train_model:1250 - Validation - Epoch 27 Loss: 1.4312, Accuracy: 0.4383
+
+2025-10-10 20:14:07.138 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 0 global_step 74656Loss 1.1337 Accuracy 0.4966
+2025-10-10 20:14:13.162 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 100 global_step 74756Loss 1.2990 Accuracy 0.4521
+2025-10-10 20:14:18.960 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 200 global_step 74856Loss 1.3121 Accuracy 0.4515
+2025-10-10 20:14:24.679 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 300 global_step 74956Loss 1.3143 Accuracy 0.4520
+2025-10-10 20:14:30.369 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 400 global_step 75056Loss 1.3091 Accuracy 0.4513
+2025-10-10 20:14:36.038 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 500 global_step 75156Loss 1.3088 Accuracy 0.4512
+2025-10-10 20:14:41.747 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 600 global_step 75256Loss 1.3120 Accuracy 0.4511
+2025-10-10 20:14:47.445 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 700 global_step 75356Loss 1.3187 Accuracy 0.4509
+2025-10-10 20:14:53.184 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 800 global_step 75456Loss 1.3174 Accuracy 0.4506
+2025-10-10 20:14:58.907 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 900 global_step 75556Loss 1.3151 Accuracy 0.4506
+2025-10-10 20:15:04.642 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1000 global_step 75656Loss 1.3149 Accuracy 0.4510
+2025-10-10 20:15:10.366 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1100 global_step 75756Loss 1.3175 Accuracy 0.4511
+2025-10-10 20:15:16.143 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1200 global_step 75856Loss 1.3160 Accuracy 0.4513
+2025-10-10 20:15:21.909 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1300 global_step 75956Loss 1.3142 Accuracy 0.4515
+2025-10-10 20:15:27.618 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1400 global_step 76056Loss 1.3161 Accuracy 0.4521
+2025-10-10 20:15:33.316 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1500 global_step 76156Loss 1.3154 Accuracy 0.4526
+2025-10-10 20:15:39.043 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1600 global_step 76256Loss 1.3138 Accuracy 0.4528
+2025-10-10 20:15:44.809 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1700 global_step 76356Loss 1.3154 Accuracy 0.4530
+2025-10-10 20:15:50.538 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1800 global_step 76456Loss 1.3145 Accuracy 0.4534
+2025-10-10 20:15:56.297 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 1900 global_step 76556Loss 1.3126 Accuracy 0.4535
+2025-10-10 20:16:02.060 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 2000 global_step 76656Loss 1.3124 Accuracy 0.4538
+2025-10-10 20:16:07.823 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 2100 global_step 76756Loss 1.3134 Accuracy 0.4539
+2025-10-10 20:16:13.526 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 2200 global_step 76856Loss 1.3130 Accuracy 0.4541
+2025-10-10 20:16:19.240 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 2300 global_step 76956Loss 1.3115 Accuracy 0.4543
+2025-10-10 20:16:24.960 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 2400 global_step 77056Loss 1.3112 Accuracy 0.4544
+2025-10-10 20:16:30.680 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 2500 global_step 77156Loss 1.3100 Accuracy 0.4547
+2025-10-10 20:16:36.346 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 2600 global_step 77256Loss 1.3094 Accuracy 0.4548
+2025-10-10 20:16:42.054 | INFO     | __main__:train_model:1230 - Epoch 28 Batch 2700 global_step 77356Loss 1.3081 Accuracy 0.4549
+2025-10-10 20:16:45.691 | INFO     | __main__:train_model:1240 - Epoch 28 Loss 1.3093 Accuracy 0.4550
+2025-10-10 20:16:45.692 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 158.63 secs
+
+2025-10-10 20:16:51.527 | INFO     | __main__:train_model:1250 - Validation - Epoch 28 Loss: 1.3693, Accuracy: 0.4527
+
+2025-10-10 20:16:53.918 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 0 global_step 77421Loss 0.9975 Accuracy 0.4811
+2025-10-10 20:16:59.727 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 100 global_step 77521Loss 1.2518 Accuracy 0.4753
+2025-10-10 20:17:05.469 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 200 global_step 77621Loss 1.2391 Accuracy 0.4753
+2025-10-10 20:17:11.180 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 300 global_step 77721Loss 1.2264 Accuracy 0.4741
+2025-10-10 20:17:16.855 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 400 global_step 77821Loss 1.2201 Accuracy 0.4744
+2025-10-10 20:17:22.661 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 500 global_step 77921Loss 1.2269 Accuracy 0.4734
+2025-10-10 20:17:28.479 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 600 global_step 78021Loss 1.2267 Accuracy 0.4730
+2025-10-10 20:17:34.194 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 700 global_step 78121Loss 1.2270 Accuracy 0.4726
+2025-10-10 20:17:39.910 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 800 global_step 78221Loss 1.2291 Accuracy 0.4725
+2025-10-10 20:17:45.730 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 900 global_step 78321Loss 1.2297 Accuracy 0.4723
+2025-10-10 20:17:51.459 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1000 global_step 78421Loss 1.2288 Accuracy 0.4726
+2025-10-10 20:17:57.210 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1100 global_step 78521Loss 1.2333 Accuracy 0.4717
+2025-10-10 20:18:02.913 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1200 global_step 78621Loss 1.2341 Accuracy 0.4717
+2025-10-10 20:18:08.627 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1300 global_step 78721Loss 1.2348 Accuracy 0.4715
+2025-10-10 20:18:14.279 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1400 global_step 78821Loss 1.2345 Accuracy 0.4716
+2025-10-10 20:18:20.010 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1500 global_step 78921Loss 1.2366 Accuracy 0.4715
+2025-10-10 20:18:25.739 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1600 global_step 79021Loss 1.2349 Accuracy 0.4715
+2025-10-10 20:18:31.678 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1700 global_step 79121Loss 1.2340 Accuracy 0.4714
+2025-10-10 20:18:37.422 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1800 global_step 79221Loss 1.2337 Accuracy 0.4714
+2025-10-10 20:18:43.213 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 1900 global_step 79321Loss 1.2340 Accuracy 0.4715
+2025-10-10 20:18:48.928 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 2000 global_step 79421Loss 1.2339 Accuracy 0.4716
+2025-10-10 20:18:55.057 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 2100 global_step 79521Loss 1.2341 Accuracy 0.4716
+2025-10-10 20:19:00.815 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 2200 global_step 79621Loss 1.2325 Accuracy 0.4716
+2025-10-10 20:19:06.511 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 2300 global_step 79721Loss 1.2331 Accuracy 0.4714
+2025-10-10 20:19:12.232 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 2400 global_step 79821Loss 1.2340 Accuracy 0.4715
+2025-10-10 20:19:18.174 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 2500 global_step 79921Loss 1.2336 Accuracy 0.4715
+2025-10-10 20:19:23.925 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 2600 global_step 80021Loss 1.2337 Accuracy 0.4714
+2025-10-10 20:19:29.618 | INFO     | __main__:train_model:1230 - Epoch 29 Batch 2700 global_step 80121Loss 1.2335 Accuracy 0.4714
+2025-10-10 20:19:33.292 | INFO     | __main__:train_model:1240 - Epoch 29 Loss 1.2335 Accuracy 0.4714
+2025-10-10 20:19:33.292 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.45 secs
+
+2025-10-10 20:19:39.395 | INFO     | __main__:train_model:1250 - Validation - Epoch 29 Loss: 1.3534, Accuracy: 0.4568
+
+2025-10-10 20:19:42.214 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 0 global_step 80186Loss 0.9770 Accuracy 0.4795
+2025-10-10 20:19:48.111 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 100 global_step 80286Loss 1.1356 Accuracy 0.4889
+2025-10-10 20:19:53.803 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 200 global_step 80386Loss 1.1500 Accuracy 0.4883
+2025-10-10 20:19:59.506 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 300 global_step 80486Loss 1.1547 Accuracy 0.4885
+2025-10-10 20:20:05.217 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 400 global_step 80586Loss 1.1517 Accuracy 0.4873
+2025-10-10 20:20:11.124 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 500 global_step 80686Loss 1.1542 Accuracy 0.4862
+2025-10-10 20:20:16.876 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 600 global_step 80786Loss 1.1575 Accuracy 0.4851
+2025-10-10 20:20:22.818 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 700 global_step 80886Loss 1.1560 Accuracy 0.4843
+2025-10-10 20:20:28.494 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 800 global_step 80986Loss 1.1611 Accuracy 0.4834
+2025-10-10 20:20:34.233 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 900 global_step 81086Loss 1.1644 Accuracy 0.4831
+2025-10-10 20:20:39.932 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1000 global_step 81186Loss 1.1677 Accuracy 0.4828
+2025-10-10 20:20:45.597 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1100 global_step 81286Loss 1.1702 Accuracy 0.4828
+2025-10-10 20:20:51.417 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1200 global_step 81386Loss 1.1715 Accuracy 0.4826
+2025-10-10 20:20:57.189 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1300 global_step 81486Loss 1.1731 Accuracy 0.4824
+2025-10-10 20:21:02.975 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1400 global_step 81586Loss 1.1768 Accuracy 0.4822
+2025-10-10 20:21:08.783 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1500 global_step 81686Loss 1.1791 Accuracy 0.4820
+2025-10-10 20:21:14.523 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1600 global_step 81786Loss 1.1811 Accuracy 0.4819
+2025-10-10 20:21:20.319 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1700 global_step 81886Loss 1.1845 Accuracy 0.4818
+2025-10-10 20:21:26.090 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1800 global_step 81986Loss 1.1853 Accuracy 0.4818
+2025-10-10 20:21:31.843 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 1900 global_step 82086Loss 1.1864 Accuracy 0.4820
+2025-10-10 20:21:37.576 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 2000 global_step 82186Loss 1.1879 Accuracy 0.4821
+2025-10-10 20:21:43.345 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 2100 global_step 82286Loss 1.1889 Accuracy 0.4820
+2025-10-10 20:21:49.083 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 2200 global_step 82386Loss 1.1879 Accuracy 0.4820
+2025-10-10 20:21:54.889 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 2300 global_step 82486Loss 1.1883 Accuracy 0.4822
+2025-10-10 20:22:00.655 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 2400 global_step 82586Loss 1.1890 Accuracy 0.4822
+2025-10-10 20:22:06.496 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 2500 global_step 82686Loss 1.1904 Accuracy 0.4821
+2025-10-10 20:22:12.212 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 2600 global_step 82786Loss 1.1924 Accuracy 0.4820
+2025-10-10 20:22:17.970 | INFO     | __main__:train_model:1230 - Epoch 30 Batch 2700 global_step 82886Loss 1.1920 Accuracy 0.4820
+2025-10-10 20:22:21.666 | INFO     | __main__:train_model:1240 - Epoch 30 Loss 1.1922 Accuracy 0.4820
+2025-10-10 20:22:21.667 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.53 secs
+
+2025-10-10 20:22:27.664 | INFO     | __main__:train_model:1250 - Validation - Epoch 30 Loss: 1.3482, Accuracy: 0.4571
+
+2025-10-10 20:22:30.815 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 0 global_step 82951Loss 0.9585 Accuracy 0.4674
+2025-10-10 20:22:36.745 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 100 global_step 83051Loss 1.1230 Accuracy 0.4957
+2025-10-10 20:22:42.474 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 200 global_step 83151Loss 1.1272 Accuracy 0.4966
+2025-10-10 20:22:48.143 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 300 global_step 83251Loss 1.1379 Accuracy 0.4950
+2025-10-10 20:22:53.866 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 400 global_step 83351Loss 1.1360 Accuracy 0.4938
+2025-10-10 20:22:59.636 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 500 global_step 83451Loss 1.1408 Accuracy 0.4936
+2025-10-10 20:23:05.550 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 600 global_step 83551Loss 1.1423 Accuracy 0.4934
+2025-10-10 20:23:11.250 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 700 global_step 83651Loss 1.1493 Accuracy 0.4928
+2025-10-10 20:23:16.951 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 800 global_step 83751Loss 1.1497 Accuracy 0.4922
+2025-10-10 20:23:22.709 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 900 global_step 83851Loss 1.1542 Accuracy 0.4916
+2025-10-10 20:23:28.465 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1000 global_step 83951Loss 1.1535 Accuracy 0.4915
+2025-10-10 20:23:34.172 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1100 global_step 84051Loss 1.1504 Accuracy 0.4911
+2025-10-10 20:23:39.923 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1200 global_step 84151Loss 1.1515 Accuracy 0.4910
+2025-10-10 20:23:46.086 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1300 global_step 84251Loss 1.1529 Accuracy 0.4907
+2025-10-10 20:23:51.746 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1400 global_step 84351Loss 1.1544 Accuracy 0.4905
+2025-10-10 20:23:57.401 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1500 global_step 84451Loss 1.1549 Accuracy 0.4905
+2025-10-10 20:24:03.050 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1600 global_step 84551Loss 1.1557 Accuracy 0.4901
+2025-10-10 20:24:08.788 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1700 global_step 84651Loss 1.1569 Accuracy 0.4898
+2025-10-10 20:24:14.659 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1800 global_step 84751Loss 1.1555 Accuracy 0.4897
+2025-10-10 20:24:20.344 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 1900 global_step 84851Loss 1.1553 Accuracy 0.4896
+2025-10-10 20:24:26.024 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 2000 global_step 84951Loss 1.1560 Accuracy 0.4895
+2025-10-10 20:24:31.791 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 2100 global_step 85051Loss 1.1569 Accuracy 0.4894
+2025-10-10 20:24:37.690 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 2200 global_step 85151Loss 1.1586 Accuracy 0.4892
+2025-10-10 20:24:43.421 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 2300 global_step 85251Loss 1.1595 Accuracy 0.4891
+2025-10-10 20:24:49.153 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 2400 global_step 85351Loss 1.1598 Accuracy 0.4890
+2025-10-10 20:24:54.949 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 2500 global_step 85451Loss 1.1595 Accuracy 0.4890
+2025-10-10 20:25:00.766 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 2600 global_step 85551Loss 1.1593 Accuracy 0.4888
+2025-10-10 20:25:06.453 | INFO     | __main__:train_model:1230 - Epoch 31 Batch 2700 global_step 85651Loss 1.1595 Accuracy 0.4888
+2025-10-10 20:25:10.112 | INFO     | __main__:train_model:1240 - Epoch 31 Loss 1.1595 Accuracy 0.4888
+2025-10-10 20:25:10.112 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.40 secs
+
+2025-10-10 20:25:15.867 | INFO     | __main__:train_model:1250 - Validation - Epoch 31 Loss: 1.3379, Accuracy: 0.4637
+
+2025-10-10 20:25:18.379 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 0 global_step 85716Loss 1.1214 Accuracy 0.5162
+2025-10-10 20:25:24.404 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 100 global_step 85816Loss 1.0824 Accuracy 0.5091
+2025-10-10 20:25:30.103 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 200 global_step 85916Loss 1.0870 Accuracy 0.5070
+2025-10-10 20:25:35.827 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 300 global_step 86016Loss 1.0981 Accuracy 0.5054
+2025-10-10 20:25:41.565 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 400 global_step 86116Loss 1.1002 Accuracy 0.5038
+2025-10-10 20:25:47.276 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 500 global_step 86216Loss 1.1053 Accuracy 0.5027
+2025-10-10 20:25:52.988 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 600 global_step 86316Loss 1.1076 Accuracy 0.5021
+2025-10-10 20:25:58.699 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 700 global_step 86416Loss 1.1067 Accuracy 0.5014
+2025-10-10 20:26:04.398 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 800 global_step 86516Loss 1.1078 Accuracy 0.5006
+2025-10-10 20:26:10.092 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 900 global_step 86616Loss 1.1135 Accuracy 0.5004
+2025-10-10 20:26:15.850 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1000 global_step 86716Loss 1.1164 Accuracy 0.4997
+2025-10-10 20:26:21.653 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1100 global_step 86816Loss 1.1191 Accuracy 0.4995
+2025-10-10 20:26:27.340 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1200 global_step 86916Loss 1.1211 Accuracy 0.4988
+2025-10-10 20:26:33.053 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1300 global_step 87016Loss 1.1241 Accuracy 0.4982
+2025-10-10 20:26:38.744 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1400 global_step 87116Loss 1.1254 Accuracy 0.4979
+2025-10-10 20:26:44.452 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1500 global_step 87216Loss 1.1270 Accuracy 0.4973
+2025-10-10 20:26:50.137 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1600 global_step 87316Loss 1.1275 Accuracy 0.4970
+2025-10-10 20:26:55.870 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1700 global_step 87416Loss 1.1280 Accuracy 0.4966
+2025-10-10 20:27:01.677 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1800 global_step 87516Loss 1.1296 Accuracy 0.4964
+2025-10-10 20:27:07.427 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 1900 global_step 87616Loss 1.1317 Accuracy 0.4960
+2025-10-10 20:27:13.108 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 2000 global_step 87716Loss 1.1349 Accuracy 0.4959
+2025-10-10 20:27:18.931 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 2100 global_step 87816Loss 1.1346 Accuracy 0.4955
+2025-10-10 20:27:24.673 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 2200 global_step 87916Loss 1.1362 Accuracy 0.4952
+2025-10-10 20:27:30.422 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 2300 global_step 88016Loss 1.1377 Accuracy 0.4950
+2025-10-10 20:27:36.204 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 2400 global_step 88116Loss 1.1377 Accuracy 0.4949
+2025-10-10 20:27:42.225 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 2500 global_step 88216Loss 1.1375 Accuracy 0.4948
+2025-10-10 20:27:48.087 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 2600 global_step 88316Loss 1.1378 Accuracy 0.4947
+2025-10-10 20:27:53.831 | INFO     | __main__:train_model:1230 - Epoch 32 Batch 2700 global_step 88416Loss 1.1393 Accuracy 0.4947
+2025-10-10 20:27:57.497 | INFO     | __main__:train_model:1240 - Epoch 32 Loss 1.1392 Accuracy 0.4946
+2025-10-10 20:27:57.497 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.20 secs
+
+2025-10-10 20:28:03.521 | INFO     | __main__:train_model:1250 - Validation - Epoch 32 Loss: 1.3368, Accuracy: 0.4648
+
+2025-10-10 20:28:06.075 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 0 global_step 88481Loss 1.1138 Accuracy 0.4974
+2025-10-10 20:28:11.897 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 100 global_step 88581Loss 1.0696 Accuracy 0.5120
+2025-10-10 20:28:17.614 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 200 global_step 88681Loss 1.0672 Accuracy 0.5119
+2025-10-10 20:28:23.300 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 300 global_step 88781Loss 1.0763 Accuracy 0.5105
+2025-10-10 20:28:29.145 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 400 global_step 88881Loss 1.0771 Accuracy 0.5096
+2025-10-10 20:28:35.503 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 500 global_step 88981Loss 1.0813 Accuracy 0.5091
+2025-10-10 20:28:41.294 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 600 global_step 89081Loss 1.0800 Accuracy 0.5080
+2025-10-10 20:28:47.041 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 700 global_step 89181Loss 1.0817 Accuracy 0.5068
+2025-10-10 20:28:52.812 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 800 global_step 89281Loss 1.0840 Accuracy 0.5064
+2025-10-10 20:28:58.497 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 900 global_step 89381Loss 1.0891 Accuracy 0.5057
+2025-10-10 20:29:04.185 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1000 global_step 89481Loss 1.0888 Accuracy 0.5054
+2025-10-10 20:29:09.828 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1100 global_step 89581Loss 1.0923 Accuracy 0.5052
+2025-10-10 20:29:15.511 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1200 global_step 89681Loss 1.0924 Accuracy 0.5046
+2025-10-10 20:29:21.307 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1300 global_step 89781Loss 1.0939 Accuracy 0.5043
+2025-10-10 20:29:27.080 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1400 global_step 89881Loss 1.1683 Accuracy 0.4886
+2025-10-10 20:29:32.847 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1500 global_step 89981Loss 1.2574 Accuracy 0.4676
+2025-10-10 20:29:38.567 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1600 global_step 90081Loss 1.3377 Accuracy 0.4497
+2025-10-10 20:29:44.383 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1700 global_step 90181Loss 1.4051 Accuracy 0.4340
+2025-10-10 20:29:50.155 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1800 global_step 90281Loss 1.4659 Accuracy 0.4200
+2025-10-10 20:29:55.840 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 1900 global_step 90381Loss 1.5201 Accuracy 0.4076
+2025-10-10 20:30:01.536 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 2000 global_step 90481Loss 1.5675 Accuracy 0.3964
+2025-10-10 20:30:07.305 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 2100 global_step 90581Loss 1.6119 Accuracy 0.3863
+2025-10-10 20:30:13.090 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 2200 global_step 90681Loss 1.6491 Accuracy 0.3771
+2025-10-10 20:30:18.866 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 2300 global_step 90781Loss 1.6850 Accuracy 0.3688
+2025-10-10 20:30:24.577 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 2400 global_step 90881Loss 1.7186 Accuracy 0.3611
+2025-10-10 20:30:30.261 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 2500 global_step 90981Loss 1.7507 Accuracy 0.3541
+2025-10-10 20:30:35.952 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 2600 global_step 91081Loss 1.7790 Accuracy 0.3478
+2025-10-10 20:30:41.712 | INFO     | __main__:train_model:1230 - Epoch 33 Batch 2700 global_step 91181Loss 1.8056 Accuracy 0.3418
+2025-10-10 20:30:45.388 | INFO     | __main__:train_model:1240 - Epoch 33 Loss 1.8212 Accuracy 0.3382
+2025-10-10 20:30:45.388 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.39 secs
+
+2025-10-10 20:30:51.231 | INFO     | __main__:train_model:1250 - Validation - Epoch 33 Loss: 4.7821, Accuracy: 0.0303
+
+2025-10-10 20:30:54.022 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 0 global_step 91246Loss 2.5883 Accuracy 0.1837
+2025-10-10 20:30:59.862 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 100 global_step 91346Loss 2.4115 Accuracy 0.1880
+2025-10-10 20:31:05.565 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 200 global_step 91446Loss 2.4414 Accuracy 0.1864
+2025-10-10 20:31:11.283 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 300 global_step 91546Loss 2.4253 Accuracy 0.1868
+2025-10-10 20:31:17.040 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 400 global_step 91646Loss 2.4368 Accuracy 0.1871
+2025-10-10 20:31:22.807 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 500 global_step 91746Loss 2.4365 Accuracy 0.1866
+2025-10-10 20:31:28.540 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 600 global_step 91846Loss 2.4345 Accuracy 0.1870
+2025-10-10 20:31:34.273 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 700 global_step 91946Loss 2.4415 Accuracy 0.1871
+2025-10-10 20:31:39.995 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 800 global_step 92046Loss 2.4432 Accuracy 0.1869
+2025-10-10 20:31:45.721 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 900 global_step 92146Loss 2.4437 Accuracy 0.1869
+2025-10-10 20:31:51.498 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1000 global_step 92246Loss 2.4481 Accuracy 0.1867
+2025-10-10 20:31:57.322 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1100 global_step 92346Loss 2.4440 Accuracy 0.1868
+2025-10-10 20:32:02.979 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1200 global_step 92446Loss 2.4491 Accuracy 0.1869
+2025-10-10 20:32:08.671 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1300 global_step 92546Loss 2.4448 Accuracy 0.1868
+2025-10-10 20:32:14.463 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1400 global_step 92646Loss 2.4455 Accuracy 0.1867
+2025-10-10 20:32:20.235 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1500 global_step 92746Loss 2.4455 Accuracy 0.1866
+2025-10-10 20:32:25.917 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1600 global_step 92846Loss 2.4515 Accuracy 0.1866
+2025-10-10 20:32:31.670 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1700 global_step 92946Loss 2.4530 Accuracy 0.1866
+2025-10-10 20:32:37.412 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1800 global_step 93046Loss 2.4557 Accuracy 0.1866
+2025-10-10 20:32:43.099 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 1900 global_step 93146Loss 2.4536 Accuracy 0.1866
+2025-10-10 20:32:48.841 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 2000 global_step 93246Loss 2.4502 Accuracy 0.1867
+2025-10-10 20:32:54.712 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 2100 global_step 93346Loss 2.4512 Accuracy 0.1867
+2025-10-10 20:33:00.414 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 2200 global_step 93446Loss 2.4518 Accuracy 0.1867
+2025-10-10 20:33:06.171 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 2300 global_step 93546Loss 2.4523 Accuracy 0.1867
+2025-10-10 20:33:11.992 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 2400 global_step 93646Loss 2.4531 Accuracy 0.1867
+2025-10-10 20:33:18.305 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 2500 global_step 93746Loss 2.4498 Accuracy 0.1867
+2025-10-10 20:33:24.149 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 2600 global_step 93846Loss 2.4529 Accuracy 0.1867
+2025-10-10 20:33:29.920 | INFO     | __main__:train_model:1230 - Epoch 34 Batch 2700 global_step 93946Loss 2.4504 Accuracy 0.1868
+2025-10-10 20:33:33.612 | INFO     | __main__:train_model:1240 - Epoch 34 Loss 2.4521 Accuracy 0.1869
+2025-10-10 20:33:33.612 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.67 secs
+
+2025-10-10 20:33:39.479 | INFO     | __main__:train_model:1250 - Validation - Epoch 34 Loss: 3.5922, Accuracy: 0.1110
+
+2025-10-10 20:33:41.764 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 0 global_step 94011Loss 2.6305 Accuracy 0.1784
+2025-10-10 20:33:47.701 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 100 global_step 94111Loss 2.4732 Accuracy 0.1890
+2025-10-10 20:33:53.463 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 200 global_step 94211Loss 2.4629 Accuracy 0.1883
+2025-10-10 20:33:59.194 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 300 global_step 94311Loss 2.4532 Accuracy 0.1878
+2025-10-10 20:34:04.897 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 400 global_step 94411Loss 2.4504 Accuracy 0.1874
+2025-10-10 20:34:10.733 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 500 global_step 94511Loss 2.4405 Accuracy 0.1879
+2025-10-10 20:34:16.396 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 600 global_step 94611Loss 2.4425 Accuracy 0.1877
+2025-10-10 20:34:22.231 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 700 global_step 94711Loss 2.4456 Accuracy 0.1874
+2025-10-10 20:34:27.980 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 800 global_step 94811Loss 2.4447 Accuracy 0.1871
+2025-10-10 20:34:33.762 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 900 global_step 94911Loss 2.4436 Accuracy 0.1868
+2025-10-10 20:34:39.564 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1000 global_step 95011Loss 2.4434 Accuracy 0.1870
+2025-10-10 20:34:45.419 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1100 global_step 95111Loss 2.4476 Accuracy 0.1872
+2025-10-10 20:34:51.206 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1200 global_step 95211Loss 2.4442 Accuracy 0.1872
+2025-10-10 20:34:57.202 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1300 global_step 95311Loss 2.4456 Accuracy 0.1873
+2025-10-10 20:35:02.968 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1400 global_step 95411Loss 2.4455 Accuracy 0.1871
+2025-10-10 20:35:08.661 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1500 global_step 95511Loss 2.4457 Accuracy 0.1873
+2025-10-10 20:35:14.392 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1600 global_step 95611Loss 2.4446 Accuracy 0.1873
+2025-10-10 20:35:20.412 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1700 global_step 95711Loss 2.4467 Accuracy 0.1873
+2025-10-10 20:35:26.554 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1800 global_step 95811Loss 2.4483 Accuracy 0.1873
+2025-10-10 20:35:32.351 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 1900 global_step 95911Loss 2.4498 Accuracy 0.1873
+2025-10-10 20:35:38.047 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 2000 global_step 96011Loss 2.4496 Accuracy 0.1873
+2025-10-10 20:35:43.942 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 2100 global_step 96111Loss 2.4492 Accuracy 0.1873
+2025-10-10 20:35:49.810 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 2200 global_step 96211Loss 2.4468 Accuracy 0.1873
+2025-10-10 20:35:55.604 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 2300 global_step 96311Loss 2.4495 Accuracy 0.1874
+2025-10-10 20:36:01.440 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 2400 global_step 96411Loss 2.4509 Accuracy 0.1875
+2025-10-10 20:36:07.136 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 2500 global_step 96511Loss 2.4506 Accuracy 0.1876
+2025-10-10 20:36:12.939 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 2600 global_step 96611Loss 2.4482 Accuracy 0.1875
+2025-10-10 20:36:18.798 | INFO     | __main__:train_model:1230 - Epoch 35 Batch 2700 global_step 96711Loss 2.4473 Accuracy 0.1875
+2025-10-10 20:36:22.624 | INFO     | __main__:train_model:1240 - Epoch 35 Loss 2.4461 Accuracy 0.1875
+2025-10-10 20:36:22.624 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 160.94 secs
+
+2025-10-10 20:36:28.479 | INFO     | __main__:train_model:1250 - Validation - Epoch 35 Loss: 5.4937, Accuracy: 0.0303
+
+2025-10-10 20:36:30.655 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 0 global_step 96776Loss 2.3766 Accuracy 0.1783
+2025-10-10 20:36:36.503 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 100 global_step 96876Loss 2.4528 Accuracy 0.1876
+2025-10-10 20:36:42.210 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 200 global_step 96976Loss 2.4692 Accuracy 0.1873
+2025-10-10 20:36:47.913 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 300 global_step 97076Loss 2.4545 Accuracy 0.1873
+2025-10-10 20:36:53.592 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 400 global_step 97176Loss 2.4701 Accuracy 0.1873
+2025-10-10 20:36:59.344 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 500 global_step 97276Loss 2.4513 Accuracy 0.1874
+2025-10-10 20:37:05.079 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 600 global_step 97376Loss 2.4552 Accuracy 0.1876
+2025-10-10 20:37:10.759 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 700 global_step 97476Loss 2.4457 Accuracy 0.1872
+2025-10-10 20:37:16.483 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 800 global_step 97576Loss 2.4434 Accuracy 0.1872
+2025-10-10 20:37:22.403 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 900 global_step 97676Loss 2.4450 Accuracy 0.1871
+2025-10-10 20:37:28.130 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1000 global_step 97776Loss 2.4385 Accuracy 0.1872
+2025-10-10 20:37:33.910 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1100 global_step 97876Loss 2.4363 Accuracy 0.1874
+2025-10-10 20:37:39.601 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1200 global_step 97976Loss 2.4342 Accuracy 0.1874
+2025-10-10 20:37:45.344 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1300 global_step 98076Loss 2.4356 Accuracy 0.1874
+2025-10-10 20:37:51.114 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1400 global_step 98176Loss 2.4342 Accuracy 0.1876
+2025-10-10 20:37:56.875 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1500 global_step 98276Loss 2.4342 Accuracy 0.1875
+2025-10-10 20:38:02.619 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1600 global_step 98376Loss 2.4300 Accuracy 0.1876
+2025-10-10 20:38:08.834 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1700 global_step 98476Loss 2.4310 Accuracy 0.1876
+2025-10-10 20:38:14.705 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1800 global_step 98576Loss 2.4327 Accuracy 0.1876
+2025-10-10 20:38:20.495 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 1900 global_step 98676Loss 2.4323 Accuracy 0.1876
+2025-10-10 20:38:26.234 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 2000 global_step 98776Loss 2.4298 Accuracy 0.1876
+2025-10-10 20:38:32.080 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 2100 global_step 98876Loss 2.4312 Accuracy 0.1875
+2025-10-10 20:38:37.849 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 2200 global_step 98976Loss 2.4303 Accuracy 0.1876
+2025-10-10 20:38:43.591 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 2300 global_step 99076Loss 2.4285 Accuracy 0.1875
+2025-10-10 20:38:49.315 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 2400 global_step 99176Loss 2.4283 Accuracy 0.1875
+2025-10-10 20:38:55.036 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 2500 global_step 99276Loss 2.4318 Accuracy 0.1875
+2025-10-10 20:39:00.760 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 2600 global_step 99376Loss 2.4323 Accuracy 0.1875
+2025-10-10 20:39:06.494 | INFO     | __main__:train_model:1230 - Epoch 36 Batch 2700 global_step 99476Loss 2.4324 Accuracy 0.1875
+2025-10-10 20:39:10.191 | INFO     | __main__:train_model:1240 - Epoch 36 Loss 2.4335 Accuracy 0.1874
+2025-10-10 20:39:10.192 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.61 secs
+
+2025-10-10 20:39:16.051 | INFO     | __main__:train_model:1250 - Validation - Epoch 36 Loss: 6.3520, Accuracy: 0.0303
+
+2025-10-10 20:39:18.880 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 0 global_step 99541Loss 2.5870 Accuracy 0.1940
+2025-10-10 20:39:24.601 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 100 global_step 99641Loss 2.4757 Accuracy 0.1879
+2025-10-10 20:39:30.293 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 200 global_step 99741Loss 2.4607 Accuracy 0.1867
+2025-10-10 20:39:36.044 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 300 global_step 99841Loss 2.4504 Accuracy 0.1865
+2025-10-10 20:39:41.846 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 400 global_step 99941Loss 2.4503 Accuracy 0.1866
+2025-10-10 20:39:47.570 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 500 global_step 100041Loss 2.4586 Accuracy 0.1870
+2025-10-10 20:39:53.258 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 600 global_step 100141Loss 2.4538 Accuracy 0.1873
+2025-10-10 20:39:59.028 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 700 global_step 100241Loss 2.4442 Accuracy 0.1876
+2025-10-10 20:40:04.727 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 800 global_step 100341Loss 2.4394 Accuracy 0.1877
+2025-10-10 20:40:10.542 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 900 global_step 100441Loss 2.4394 Accuracy 0.1880
+2025-10-10 20:40:16.297 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1000 global_step 100541Loss 2.4426 Accuracy 0.1880
+2025-10-10 20:40:22.070 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1100 global_step 100641Loss 2.4421 Accuracy 0.1881
+2025-10-10 20:40:27.747 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1200 global_step 100741Loss 2.4424 Accuracy 0.1880
+2025-10-10 20:40:33.435 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1300 global_step 100841Loss 2.4407 Accuracy 0.1880
+2025-10-10 20:40:39.315 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1400 global_step 100941Loss 2.4366 Accuracy 0.1878
+2025-10-10 20:40:45.185 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1500 global_step 101041Loss 2.4383 Accuracy 0.1877
+2025-10-10 20:40:50.891 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1600 global_step 101141Loss 2.4386 Accuracy 0.1877
+2025-10-10 20:40:56.625 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1700 global_step 101241Loss 2.4350 Accuracy 0.1877
+2025-10-10 20:41:02.501 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1800 global_step 101341Loss 2.4326 Accuracy 0.1877
+2025-10-10 20:41:08.311 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 1900 global_step 101441Loss 2.4356 Accuracy 0.1876
+2025-10-10 20:41:13.997 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 2000 global_step 101541Loss 2.4372 Accuracy 0.1875
+2025-10-10 20:41:19.737 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 2100 global_step 101641Loss 2.4361 Accuracy 0.1875
+2025-10-10 20:41:25.484 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 2200 global_step 101741Loss 2.4344 Accuracy 0.1876
+2025-10-10 20:41:31.203 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 2300 global_step 101841Loss 2.4354 Accuracy 0.1876
+2025-10-10 20:41:36.999 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 2400 global_step 101941Loss 2.4356 Accuracy 0.1875
+2025-10-10 20:41:42.719 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 2500 global_step 102041Loss 2.4370 Accuracy 0.1875
+2025-10-10 20:41:48.422 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 2600 global_step 102141Loss 2.4352 Accuracy 0.1874
+2025-10-10 20:41:54.099 | INFO     | __main__:train_model:1230 - Epoch 37 Batch 2700 global_step 102241Loss 2.4357 Accuracy 0.1874
+2025-10-10 20:41:57.760 | INFO     | __main__:train_model:1240 - Epoch 37 Loss 2.4361 Accuracy 0.1874
+2025-10-10 20:41:57.760 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 158.96 secs
+
+2025-10-10 20:42:03.581 | INFO     | __main__:train_model:1250 - Validation - Epoch 37 Loss: 6.1081, Accuracy: 0.0303
+
+2025-10-10 20:42:06.754 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 0 global_step 102306Loss 2.6438 Accuracy 0.1946
+2025-10-10 20:42:12.521 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 100 global_step 102406Loss 2.3860 Accuracy 0.1875
+2025-10-10 20:42:18.305 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 200 global_step 102506Loss 2.4219 Accuracy 0.1873
+2025-10-10 20:42:24.064 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 300 global_step 102606Loss 2.4120 Accuracy 0.1871
+2025-10-10 20:42:29.761 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 400 global_step 102706Loss 2.4058 Accuracy 0.1873
+2025-10-10 20:42:35.433 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 500 global_step 102806Loss 2.4219 Accuracy 0.1870
+2025-10-10 20:42:41.250 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 600 global_step 102906Loss 2.4216 Accuracy 0.1869
+2025-10-10 20:42:46.941 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 700 global_step 103006Loss 2.4213 Accuracy 0.1870
+2025-10-10 20:42:52.691 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 800 global_step 103106Loss 2.4196 Accuracy 0.1870
+2025-10-10 20:42:58.596 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 900 global_step 103206Loss 2.4218 Accuracy 0.1873
+2025-10-10 20:43:04.939 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1000 global_step 103306Loss 2.4236 Accuracy 0.1872
+2025-10-10 20:43:10.660 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1100 global_step 103406Loss 2.4290 Accuracy 0.1874
+2025-10-10 20:43:16.472 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1200 global_step 103506Loss 2.4266 Accuracy 0.1875
+2025-10-10 20:43:22.324 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1300 global_step 103606Loss 2.4278 Accuracy 0.1875
+2025-10-10 20:43:28.233 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1400 global_step 103706Loss 2.4311 Accuracy 0.1876
+2025-10-10 20:43:34.068 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1500 global_step 103806Loss 2.4348 Accuracy 0.1878
+2025-10-10 20:43:39.833 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1600 global_step 103906Loss 2.4373 Accuracy 0.1879
+2025-10-10 20:43:45.527 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1700 global_step 104006Loss 2.4357 Accuracy 0.1880
+2025-10-10 20:43:51.233 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1800 global_step 104106Loss 2.4357 Accuracy 0.1880
+2025-10-10 20:43:56.931 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 1900 global_step 104206Loss 2.4341 Accuracy 0.1880
+2025-10-10 20:44:02.605 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 2000 global_step 104306Loss 2.4333 Accuracy 0.1879
+2025-10-10 20:44:08.284 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 2100 global_step 104406Loss 2.4316 Accuracy 0.1878
+2025-10-10 20:44:14.065 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 2200 global_step 104506Loss 2.4305 Accuracy 0.1877
+2025-10-10 20:44:20.060 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 2300 global_step 104606Loss 2.4332 Accuracy 0.1878
+2025-10-10 20:44:25.821 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 2400 global_step 104706Loss 2.4335 Accuracy 0.1877
+2025-10-10 20:44:31.527 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 2500 global_step 104806Loss 2.4326 Accuracy 0.1876
+2025-10-10 20:44:37.224 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 2600 global_step 104906Loss 2.4331 Accuracy 0.1876
+2025-10-10 20:44:43.037 | INFO     | __main__:train_model:1230 - Epoch 38 Batch 2700 global_step 105006Loss 2.4327 Accuracy 0.1875
+2025-10-10 20:44:46.684 | INFO     | __main__:train_model:1240 - Epoch 38 Loss 2.4330 Accuracy 0.1876
+2025-10-10 20:44:46.684 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 160.02 secs
+
+2025-10-10 20:44:52.503 | INFO     | __main__:train_model:1250 - Validation - Epoch 38 Loss: 3.7225, Accuracy: 0.0303
+
+2025-10-10 20:44:55.367 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 0 global_step 105071Loss 2.4343 Accuracy 0.1946
+2025-10-10 20:45:01.035 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 100 global_step 105171Loss 2.4713 Accuracy 0.1859
+2025-10-10 20:45:06.794 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 200 global_step 105271Loss 2.4419 Accuracy 0.1872
+2025-10-10 20:45:12.570 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 300 global_step 105371Loss 2.4374 Accuracy 0.1872
+2025-10-10 20:45:18.358 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 400 global_step 105471Loss 2.4161 Accuracy 0.1873
+2025-10-10 20:45:24.073 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 500 global_step 105571Loss 2.4151 Accuracy 0.1869
+2025-10-10 20:45:29.731 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 600 global_step 105671Loss 2.4227 Accuracy 0.1873
+2025-10-10 20:45:35.432 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 700 global_step 105771Loss 2.4209 Accuracy 0.1874
+2025-10-10 20:45:41.135 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 800 global_step 105871Loss 2.4194 Accuracy 0.1871
+2025-10-10 20:45:46.846 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 900 global_step 105971Loss 2.4137 Accuracy 0.1871
+2025-10-10 20:45:52.550 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1000 global_step 106071Loss 2.4164 Accuracy 0.1872
+2025-10-10 20:45:58.291 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1100 global_step 106171Loss 2.4195 Accuracy 0.1875
+2025-10-10 20:46:04.001 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1200 global_step 106271Loss 2.4197 Accuracy 0.1875
+2025-10-10 20:46:09.744 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1300 global_step 106371Loss 2.4230 Accuracy 0.1876
+2025-10-10 20:46:15.471 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1400 global_step 106471Loss 2.4217 Accuracy 0.1876
+2025-10-10 20:46:21.579 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1500 global_step 106571Loss 2.4219 Accuracy 0.1878
+2025-10-10 20:46:27.329 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1600 global_step 106671Loss 2.4242 Accuracy 0.1876
+2025-10-10 20:46:33.051 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1700 global_step 106771Loss 2.4251 Accuracy 0.1877
+2025-10-10 20:46:38.788 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1800 global_step 106871Loss 2.4290 Accuracy 0.1876
+2025-10-10 20:46:44.583 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 1900 global_step 106971Loss 2.4311 Accuracy 0.1876
+2025-10-10 20:46:50.297 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 2000 global_step 107071Loss 2.4323 Accuracy 0.1877
+2025-10-10 20:46:56.005 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 2100 global_step 107171Loss 2.4326 Accuracy 0.1877
+2025-10-10 20:47:01.702 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 2200 global_step 107271Loss 2.4344 Accuracy 0.1876
+2025-10-10 20:47:07.482 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 2300 global_step 107371Loss 2.4350 Accuracy 0.1877
+2025-10-10 20:47:13.232 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 2400 global_step 107471Loss 2.4350 Accuracy 0.1875
+2025-10-10 20:47:18.951 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 2500 global_step 107571Loss 2.4345 Accuracy 0.1877
+2025-10-10 20:47:24.729 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 2600 global_step 107671Loss 2.4340 Accuracy 0.1878
+2025-10-10 20:47:30.589 | INFO     | __main__:train_model:1230 - Epoch 39 Batch 2700 global_step 107771Loss 2.4334 Accuracy 0.1878
+2025-10-10 20:47:34.268 | INFO     | __main__:train_model:1240 - Epoch 39 Loss 2.4323 Accuracy 0.1878
+2025-10-10 20:47:34.269 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 158.97 secs
+
+2025-10-10 20:47:40.153 | INFO     | __main__:train_model:1250 - Validation - Epoch 39 Loss: 3.1553, Accuracy: 0.0209
+
+2025-10-10 20:47:42.731 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 0 global_step 107836Loss 3.0410 Accuracy 0.1793
+2025-10-10 20:47:48.496 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 100 global_step 107936Loss 2.4175 Accuracy 0.1890
+2025-10-10 20:47:54.663 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 200 global_step 108036Loss 2.4287 Accuracy 0.1876
+2025-10-10 20:48:00.374 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 300 global_step 108136Loss 2.4365 Accuracy 0.1870
+2025-10-10 20:48:06.162 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 400 global_step 108236Loss 2.4477 Accuracy 0.1872
+2025-10-10 20:48:11.842 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 500 global_step 108336Loss 2.4348 Accuracy 0.1873
+2025-10-10 20:48:17.527 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 600 global_step 108436Loss 2.4363 Accuracy 0.1870
+2025-10-10 20:48:23.335 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 700 global_step 108536Loss 2.4371 Accuracy 0.1868
+2025-10-10 20:48:29.032 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 800 global_step 108636Loss 2.4348 Accuracy 0.1866
+2025-10-10 20:48:34.776 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 900 global_step 108736Loss 2.4423 Accuracy 0.1868
+2025-10-10 20:48:40.491 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1000 global_step 108836Loss 2.4424 Accuracy 0.1870
+2025-10-10 20:48:46.195 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1100 global_step 108936Loss 2.4422 Accuracy 0.1868
+2025-10-10 20:48:51.960 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1200 global_step 109036Loss 2.4413 Accuracy 0.1869
+2025-10-10 20:48:57.690 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1300 global_step 109136Loss 2.4382 Accuracy 0.1867
+2025-10-10 20:49:03.406 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1400 global_step 109236Loss 2.4357 Accuracy 0.1868
+2025-10-10 20:49:09.064 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1500 global_step 109336Loss 2.4367 Accuracy 0.1869
+2025-10-10 20:49:14.877 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1600 global_step 109436Loss 2.4362 Accuracy 0.1869
+2025-10-10 20:49:20.600 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1700 global_step 109536Loss 2.4351 Accuracy 0.1869
+2025-10-10 20:49:26.371 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1800 global_step 109636Loss 2.4375 Accuracy 0.1869
+2025-10-10 20:49:32.493 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 1900 global_step 109736Loss 2.4349 Accuracy 0.1870
+2025-10-10 20:49:38.243 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 2000 global_step 109836Loss 2.4342 Accuracy 0.1870
+2025-10-10 20:49:43.969 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 2100 global_step 109936Loss 2.4298 Accuracy 0.1871
+2025-10-10 20:49:49.652 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 2200 global_step 110036Loss 2.4300 Accuracy 0.1871
+2025-10-10 20:49:55.388 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 2300 global_step 110136Loss 2.4319 Accuracy 0.1872
+2025-10-10 20:50:01.099 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 2400 global_step 110236Loss 2.4296 Accuracy 0.1871
+2025-10-10 20:50:06.787 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 2500 global_step 110336Loss 2.4320 Accuracy 0.1871
+2025-10-10 20:50:12.468 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 2600 global_step 110436Loss 2.4317 Accuracy 0.1871
+2025-10-10 20:50:18.177 | INFO     | __main__:train_model:1230 - Epoch 40 Batch 2700 global_step 110536Loss 2.4344 Accuracy 0.1872
+2025-10-10 20:50:21.826 | INFO     | __main__:train_model:1240 - Epoch 40 Loss 2.4353 Accuracy 0.1872
+2025-10-10 20:50:21.826 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.17 secs
+
+2025-10-10 20:50:27.637 | INFO     | __main__:train_model:1250 - Validation - Epoch 40 Loss: 4.6302, Accuracy: 0.0303
+
+2025-10-10 20:50:30.483 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 0 global_step 110601Loss 2.6464 Accuracy 0.1773
+2025-10-10 20:50:36.186 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 100 global_step 110701Loss 2.4113 Accuracy 0.1855
+2025-10-10 20:50:42.087 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 200 global_step 110801Loss 2.3991 Accuracy 0.1863
+2025-10-10 20:50:47.781 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 300 global_step 110901Loss 2.3981 Accuracy 0.1871
+2025-10-10 20:50:53.501 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 400 global_step 111001Loss 2.4044 Accuracy 0.1871
+2025-10-10 20:50:59.221 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 500 global_step 111101Loss 2.4135 Accuracy 0.1872
+2025-10-10 20:51:04.949 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 600 global_step 111201Loss 2.4180 Accuracy 0.1871
+2025-10-10 20:51:10.847 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 700 global_step 111301Loss 2.4211 Accuracy 0.1873
+2025-10-10 20:51:16.659 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 800 global_step 111401Loss 2.4231 Accuracy 0.1873
+2025-10-10 20:51:22.419 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 900 global_step 111501Loss 2.4179 Accuracy 0.1873
+2025-10-10 20:51:28.193 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1000 global_step 111601Loss 2.4150 Accuracy 0.1874
+2025-10-10 20:51:33.921 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1100 global_step 111701Loss 2.4195 Accuracy 0.1876
+2025-10-10 20:51:39.681 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1200 global_step 111801Loss 2.4204 Accuracy 0.1877
+2025-10-10 20:51:45.420 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1300 global_step 111901Loss 2.4245 Accuracy 0.1877
+2025-10-10 20:51:51.122 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1400 global_step 112001Loss 2.4208 Accuracy 0.1876
+2025-10-10 20:51:56.915 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1500 global_step 112101Loss 2.4195 Accuracy 0.1876
+2025-10-10 20:52:02.741 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1600 global_step 112201Loss 2.4191 Accuracy 0.1876
+2025-10-10 20:52:08.551 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1700 global_step 112301Loss 2.4228 Accuracy 0.1876
+2025-10-10 20:52:14.263 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1800 global_step 112401Loss 2.4228 Accuracy 0.1876
+2025-10-10 20:52:20.065 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 1900 global_step 112501Loss 2.4224 Accuracy 0.1875
+2025-10-10 20:52:25.783 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 2000 global_step 112601Loss 2.4245 Accuracy 0.1876
+2025-10-10 20:52:31.481 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 2100 global_step 112701Loss 2.4271 Accuracy 0.1877
+2025-10-10 20:52:37.618 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 2200 global_step 112801Loss 2.4262 Accuracy 0.1877
+2025-10-10 20:52:43.282 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 2300 global_step 112901Loss 2.4312 Accuracy 0.1877
+2025-10-10 20:52:49.044 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 2400 global_step 113001Loss 2.4322 Accuracy 0.1877
+2025-10-10 20:52:54.799 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 2500 global_step 113101Loss 2.4348 Accuracy 0.1878
+2025-10-10 20:53:00.464 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 2600 global_step 113201Loss 2.4359 Accuracy 0.1878
+2025-10-10 20:53:06.170 | INFO     | __main__:train_model:1230 - Epoch 41 Batch 2700 global_step 113301Loss 2.4362 Accuracy 0.1878
+2025-10-10 20:53:09.832 | INFO     | __main__:train_model:1240 - Epoch 41 Loss 2.4364 Accuracy 0.1878
+2025-10-10 20:53:09.832 | INFO     | __main__:train_model:1241 - Time taken for 1 epoch: 159.42 secs
+
+2025-10-10 20:53:15.675 | INFO     | __main__:train_model:1250 - Validation - Epoch 41 Loss: 4.6547, Accuracy: 0.0303
+
+2025-10-10 20:53:18.257 | INFO     | __main__:train_model:1230 - Epoch 42 Batch 0 global_step 113366Loss 2.7933 Accuracy 0.1952
