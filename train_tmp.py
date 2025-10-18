@@ -32,7 +32,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
 # 混合精度训练
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 
 # 设置可见的GPU，可以根据需要修改
 os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,5,6,7"  # 使用4张GPU
@@ -742,8 +742,13 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 
     # 加上 mask
     if mask is not None:
-        # 在 mask==1 的位置加上 -1e9，使 softmax 后趋近于0
-        scaled_attention_logits = scaled_attention_logits.masked_fill(mask == 1, -1e9)
+        # 在 mask==1 的位置加上一个大的负值，使 softmax 后趋近于0
+        # 使用 FP16 兼容的值，避免溢出
+        if scaled_attention_logits.dtype == torch.float16:
+            mask_value = -6.55e4  # FP16 的最大负值
+        else:
+            mask_value = -1e9
+        scaled_attention_logits = scaled_attention_logits.masked_fill(mask == 1, mask_value)
 
     # softmax 得到注意力权重
     attention_weights = F.softmax(scaled_attention_logits, dim=-1)
@@ -1535,7 +1540,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
 
     # 使用混合精度训练
     if use_amp and scaler is not None:
-        with autocast():
+        with autocast('cuda'):
             transformer_output = transformer(
                 inp, tar_inp,
                 src_mask=enc_pad_mask,
@@ -1666,7 +1671,8 @@ def train_model(
     # 初始化混合精度训练
     scaler = None
     if use_amp and torch.cuda.is_available():
-        scaler = GradScaler()
+        # 使用新的 GradScaler API
+        scaler = GradScaler('cuda')
         logger.info("✅ 启用混合精度训练 (AMP)")
         log_mixed_precision_info(use_amp=True, scaler=scaler)
     else:
