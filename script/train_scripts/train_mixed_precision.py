@@ -31,6 +31,9 @@ from collections import OrderedDict
 import torch.distributed as dist
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
+# 混合精度训练
+from torch.amp import autocast, GradScaler
+
 # 设置可见的GPU，可以根据需要修改
 os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,5,6,7"  # 使用4张GPU
 
@@ -147,6 +150,21 @@ def log_gpu_memory_usage(step_name="", use_multi_gpu=False, gpu_count=1):
         memory_allocated = torch.cuda.memory_allocated(0) / 1024 ** 3
         memory_reserved = torch.cuda.memory_reserved(0) / 1024 ** 3
         logger.info(f"GPU {step_name} - 内存使用: {memory_allocated:.2f}GB/{memory_reserved:.2f}GB")
+
+
+def log_mixed_precision_info(use_amp=False, scaler=None):
+    """
+    记录混合精度训练信息
+    """
+    if use_amp and scaler is not None:
+        logger.info(f"🔧 混合精度训练状态:")
+        logger.info(f"   GradScaler 启用: {scaler.is_enabled()}")
+        logger.info(f"   当前缩放因子: {scaler.get_scale():.2e}")
+        logger.info(f"   增长因子: {scaler.get_growth_factor()}")
+        logger.info(f"   回退因子: {scaler.get_backoff_factor()}")
+        logger.info(f"   增长间隔: {scaler.get_growth_interval()}")
+    else:
+        logger.info("📊 标准精度训练模式")
 
 
 def check_env():
@@ -724,8 +742,13 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 
     # 加上 mask
     if mask is not None:
-        # 在 mask==1 的位置加上 -1e9，使 softmax 后趋近于0
-        scaled_attention_logits = scaled_attention_logits.masked_fill(mask == 1, -1e9)
+        # 在 mask==1 的位置加上一个大的负值，使 softmax 后趋近于0
+        # 使用 FP16 兼容的值，避免溢出
+        if scaled_attention_logits.dtype == torch.float16:
+            mask_value = -6.55e4  # FP16 的最大负值
+        else:
+            mask_value = -1e9
+        scaled_attention_logits = scaled_attention_logits.masked_fill(mask == 1, mask_value)
 
     # softmax 得到注意力权重
     attention_weights = F.softmax(scaled_attention_logits, dim=-1)
@@ -1492,10 +1515,13 @@ class AverageMeter:
     def avg(self): return self.sum / max(1, self.n)
 
 
-def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False):
+def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, scaler=None, use_amp=False):
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     transformer.train()
+
+    # 性能监控
+    step_start_time = time.time()
 
     # 只在必要时清理GPU缓存（减少频率以提高性能）
     # if torch.cuda.is_available():
@@ -1515,61 +1541,115 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     )
     enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
 
-    transformer_output = transformer(
-        inp, tar_inp,
-        src_mask=enc_pad_mask,
-        tgt_mask=dec_mask,
-        enc_dec_mask=enc_dec_mask
-    )
+    # 使用混合精度训练
+    if use_amp and scaler is not None:
+        with autocast('cuda'):
+            transformer_output = transformer(
+                inp, tar_inp,
+                src_mask=enc_pad_mask,
+                tgt_mask=dec_mask,
+                enc_dec_mask=enc_dec_mask
+            )
 
-    # 处理 MoE 输出
-    if isinstance(transformer_output, tuple) and len(transformer_output) == 3:
-        logits, _, router_logits = transformer_output
+            # 处理 MoE 输出
+            if isinstance(transformer_output, tuple) and len(transformer_output) == 3:
+                logits, _, router_logits = transformer_output
+            else:
+                logits, _ = transformer_output
+                router_logits = None
+
+            loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config)
     else:
-        logits, _ = transformer_output
-        router_logits = None
+        # 标准精度训练
+        transformer_output = transformer(
+            inp, tar_inp,
+            src_mask=enc_pad_mask,
+            tgt_mask=dec_mask,
+            enc_dec_mask=enc_dec_mask
+        )
 
-    loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config)
+        # 处理 MoE 输出
+        if isinstance(transformer_output, tuple) and len(transformer_output) == 3:
+            logits, _, router_logits = transformer_output
+        else:
+            logits, _ = transformer_output
+            router_logits = None
+
+        loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config)
 
     # 检测NaN或Inf损失
     if not torch.isfinite(loss):
         logger.error(f"Loss is {loss.item()}, skipping this batch")
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     optimizer.zero_grad(set_to_none=True)
-    loss.backward()
+    
+    # 混合精度反向传播
+    if use_amp and scaler is not None:
+        scaler.scale(loss).backward()
+        
+        # 检查梯度缩放器是否检测到inf/nan
+        if scaler.is_enabled():
+            scaler.unscale_(optimizer)
+            
+            # 改进的梯度裁剪策略
+            model_for_grad_clip = transformer.module if use_multi_gpu else transformer
+            grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.5)
+            
+            # 检查是否有inf/nan梯度
+            if torch.isfinite(grad_norm):
+                # 更严格的梯度监控
+                if grad_norm > 5.0:
+                    logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
+                    # 如果梯度范数过大，进一步裁剪
+                    torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.1)
+                    logger.warning(f"Applied additional gradient clipping to 0.1")
+                
+                # 执行优化器步骤
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                logger.warning("Gradient norm is inf/nan, skipping optimizer step")
+                return 0.0, 0.0, 0.0
+    else:
+        # 标准精度反向传播
+        loss.backward()
 
-    # 改进的梯度裁剪策略
-    # 1. 先计算梯度范数
-    # 对于DataParallel包装的模型，需要访问module属性
-    model_for_grad_clip = transformer.module if use_multi_gpu else transformer
-    grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.5)
+        # 改进的梯度裁剪策略
+        # 1. 先计算梯度范数
+        # 对于DataParallel包装的模型，需要访问module属性
+        model_for_grad_clip = transformer.module if use_multi_gpu else transformer
+        grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.5)
 
-    # 2. 更严格的梯度监控
-    if grad_norm > 5.0:
-        logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
-        # 如果梯度范数过大，进一步裁剪
-        torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.1)
-        logger.warning(f"Applied additional gradient clipping to 0.1")
+        # 2. 更严格的梯度监控
+        if grad_norm > 5.0:
+            logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
+            # 如果梯度范数过大，进一步裁剪
+            torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.1)
+            logger.warning(f"Applied additional gradient clipping to 0.1")
 
-    # 3. 检查是否有NaN梯度
-    has_nan_grad = False
-    for name, param in model_for_grad_clip.named_parameters():
-        if param.grad is not None and torch.isnan(param.grad).any():
-            logger.error(f"NaN gradient detected in {name}")
-            has_nan_grad = True
-            break
+        # 3. 检查是否有NaN梯度
+        has_nan_grad = False
+        for name, param in model_for_grad_clip.named_parameters():
+            if param.grad is not None and torch.isnan(param.grad).any():
+                logger.error(f"NaN gradient detected in {name}")
+                has_nan_grad = True
+                break
 
-    if has_nan_grad:
-        logger.error("Skipping this batch due to NaN gradients")
-        return 0.0, 0.0
+        if has_nan_grad:
+            logger.error("Skipping this batch due to NaN gradients")
+            return 0.0, 0.0, 0.0
 
-    optimizer.step()
+        optimizer.step()
+
     if scheduler is not None:
         scheduler.step()
 
     acc = token_accuracy(tar_real, logits, pad_id=TGT_PAD_ID)
-    return loss.item(), acc
+    
+    # 性能统计
+    step_time = time.time() - step_start_time
+    return loss.item(), acc, step_time
 
 
 def train_model(
@@ -1586,12 +1666,31 @@ def train_model(
         tensorboard_dir: str = "runs",
         moe_config=None,
         use_multi_gpu: bool = False,
+        use_amp: bool = True,
 ):
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(tensorboard_dir, exist_ok=True)
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
+
+    # 初始化混合精度训练
+    scaler = None
+    if use_amp and torch.cuda.is_available():
+        # 使用优化的 GradScaler 配置
+        scaler = GradScaler(
+            'cuda',
+            init_scale=2.**16,  # 更大的初始缩放因子
+            growth_factor=2.0,
+            backoff_factor=0.5,
+            growth_interval=1000,  # 更频繁的增长间隔
+            enabled=True
+        )
+        logger.info("✅ 启用混合精度训练 (AMP)")
+        log_mixed_precision_info(use_amp=True, scaler=scaler)
+    else:
+        logger.info("⚠️ 使用标准精度训练")
+        log_mixed_precision_info(use_amp=False, scaler=None)
 
     # 初始化 TensorBoard writer
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1600,6 +1699,7 @@ def train_model(
 
     train_loss_meter = AverageMeter("train_loss")
     train_acc_meter = AverageMeter("train_accuracy")
+    train_time_meter = AverageMeter("train_time")
     global_step = 0
 
     for epoch in range(epochs):
@@ -1607,21 +1707,24 @@ def train_model(
             start = time.time()
             train_loss_meter.reset()
             train_acc_meter.reset()
+            train_time_meter.reset()
             model.train()
 
             for batch_idx, batch in enumerate(train_loader):
-                loss_val, acc_val = train_step(
+                loss_val, acc_val, step_time = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
-                    moe_config=moe_config, use_multi_gpu=use_multi_gpu
+                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, scaler=scaler, use_amp=use_amp
                 )
                 train_loss_meter.update(loss_val, 1)
                 train_acc_meter.update(acc_val, 1)
+                train_time_meter.update(step_time, 1)
 
                 global_step += 1
 
                 # 记录到 TensorBoard
                 writer.add_scalar('Train/Loss', loss_val, global_step)
                 writer.add_scalar('Train/Accuracy', acc_val, global_step)
+                writer.add_scalar('Train/Step_Time', step_time, global_step)
 
                 # 记录学习率
                 if scheduler is not None:
@@ -1650,6 +1753,10 @@ def train_model(
                         writer.add_scalar('Train/Avg_Gradient_Norm', avg_grad_norm, global_step)
                         writer.add_scalar('Train/Max_Gradient_Norm', max_grad_norm, global_step)
                         writer.add_scalar('Train/Avg_Parameter_Norm', avg_param_norm, global_step)
+                        
+                        # 记录混合精度训练状态
+                        if use_amp and scaler is not None:
+                            writer.add_scalar('Train/GradScaler_Scale', scaler.get_scale(), global_step)
 
                 if batch_idx % log_every == 0:
                     # 添加内存监控
@@ -1665,9 +1772,14 @@ def train_model(
                             memory_reserved = torch.cuda.memory_reserved() / 1024 ** 3
                             memory_info = f" GPU内存: {memory_allocated:.2f}GB/{memory_reserved:.2f}GB"
 
+                    # 计算性能指标
+                    avg_step_time = train_time_meter.avg
+                    throughput = 1.0 / avg_step_time if avg_step_time > 0 else 0
+                    
                     logger.info(
-                        f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step}"
-                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}{memory_info}"
+                        f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step} "
+                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f} "
+                        f"StepTime {avg_step_time:.3f}s Throughput {throughput:.2f} batch/s{memory_info}"
                     )
 
             # 记录每个 epoch 的平均指标到 TensorBoard
@@ -1696,7 +1808,8 @@ def train_model(
                 step=global_step,
                 ckpt_dir=ckpt_dir,
                 tag="latest",
-                use_multi_gpu=use_multi_gpu
+                use_multi_gpu=use_multi_gpu,
+                scaler=scaler
             )
 
         except Exception as e:
@@ -1719,7 +1832,8 @@ def train_model(
                     epoch=epoch,
                     step=global_step,
                     tag="error",
-                    use_multi_gpu=use_multi_gpu
+                    use_multi_gpu=use_multi_gpu,
+                    scaler=scaler
                 )
                 train_model._error_saved = True
 
@@ -1918,7 +2032,7 @@ def translate(input_sentence, transformer, pt_tokenizer, en_tokenizer,
     return predicted_sentence
 
 
-def save_ckpt(model, optimizer, scheduler, epoch, step, ckpt_dir="checkpoints", tag="latest", use_multi_gpu=False):
+def save_ckpt(model, optimizer, scheduler, epoch, step, ckpt_dir="checkpoints", tag="latest", use_multi_gpu=False, scaler=None):
     """
     保存 checkpoint
     Args:
@@ -1930,6 +2044,7 @@ def save_ckpt(model, optimizer, scheduler, epoch, step, ckpt_dir="checkpoints", 
         ckpt_dir: 保存目录
         tag: 保存标识 ("latest", "error", "custom" 等)
         use_multi_gpu: 是否使用多卡训练
+        scaler: GradScaler (混合精度训练)
     """
     os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -1942,6 +2057,7 @@ def save_ckpt(model, optimizer, scheduler, epoch, step, ckpt_dir="checkpoints", 
         "model": model_state,
         "optim": optimizer.state_dict(),
         "sched": scheduler.state_dict() if scheduler else None,
+        "scaler": scaler.state_dict() if scaler else None,
         "use_multi_gpu": use_multi_gpu,
     }
 
@@ -1965,7 +2081,7 @@ def save_ckpt(model, optimizer, scheduler, epoch, step, ckpt_dir="checkpoints", 
     return path
 
 
-def load_ckpt(model, optimizer=None, scheduler=None, ckpt_dir="checkpoints", device="cpu", use_multi_gpu=False):
+def load_ckpt(model, optimizer=None, scheduler=None, ckpt_dir="checkpoints", device="cpu", use_multi_gpu=False, scaler=None):
     """
     加载最新 checkpoint
     """
@@ -1981,6 +2097,7 @@ def load_ckpt(model, optimizer=None, scheduler=None, ckpt_dir="checkpoints", dev
 
     if optimizer: optimizer.load_state_dict(ckpt["optim"])
     if scheduler and ckpt["sched"]: scheduler.load_state_dict(ckpt["sched"])
+    if scaler and ckpt.get("scaler"): scaler.load_state_dict(ckpt["scaler"])
 
     saved_multi_gpu = ckpt.get("use_multi_gpu", False)
     logger.info(f"✅ checkpoint loaded (epoch={ckpt['epoch']}, step={ckpt['step']}, multi_gpu={saved_multi_gpu})")
@@ -2013,6 +2130,9 @@ if __name__ == "__main__":
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
+    
+    # 混合精度训练配置
+    use_mixed_precision = True  # 是否启用混合精度训练 (L20 GPU 优化不佳，建议关闭)
 
     # 模型结构
     num_layers = 8
@@ -2049,6 +2169,18 @@ if __name__ == "__main__":
     # 1.1 设置多卡训练
     device, use_multi_gpu, gpu_count = setup_multi_gpu()
     logger.info(f"多卡训练设置: use_multi_gpu={use_multi_gpu}, gpu_count={gpu_count}")
+    
+    # 1.2 混合精度训练配置
+    if use_mixed_precision and torch.cuda.is_available():
+        logger.info("✅ 混合精度训练已启用 - 将使用 FP16 进行前向传播，FP32 进行反向传播")
+        logger.info("   预期收益: 减少显存使用约 50%，提升训练速度约 1.5-2x")
+        logger.info("   ⚠️ 注意: L20 GPU 对 FP16 优化有限，可能不会显著提升速度")
+    elif use_mixed_precision and not torch.cuda.is_available():
+        logger.warning("⚠️ 混合精度训练需要 CUDA 支持，当前使用 CPU，将回退到标准精度")
+        use_mixed_precision = False
+    else:
+        logger.info("📊 使用标准精度训练 (FP32)")
+        logger.info("   💡 提示: 如需启用混合精度训练，请设置 use_mixed_precision = True")
 
     # 2. 加载葡萄牙语-英语翻译数据集
     train_dataset, val_dataset = load_translation_dataset(
@@ -2313,8 +2445,8 @@ if __name__ == "__main__":
     # )
 
     # 6.2 【测试】 打印自定义学习率曲线
-    plot_customized_lr_curve(optimizer, scheduler, total_steps=num_training_steps,
-                             label=f"d_model={d_model}, warmup={warmup_steps}")
+    #plot_customized_lr_curve(optimizer, scheduler, total_steps=num_training_steps,
+    #                         label=f"d_model={d_model}, warmup={warmup_steps}")
 
     ##############################【Test - optimizer | scheduler 】##############################
 
@@ -2342,8 +2474,11 @@ if __name__ == "__main__":
             tensorboard_dir="runs",  # TensorBoard 日志目录
             moe_config=moe_config,  # MoE 配置
             use_multi_gpu=use_multi_gpu,  # 多卡训练标志
+            use_amp=use_mixed_precision,  # 启用混合精度训练
         )
     # else:
     #     start_epoch, global_step = load_ckpt(model, optimizer, scheduler, device=device)
     #     logger.info("Checkpoint loaded successfully!")
+
+
 
