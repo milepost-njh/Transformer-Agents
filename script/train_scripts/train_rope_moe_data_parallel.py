@@ -2142,11 +2142,11 @@ if __name__ == "__main__":
     #     num_training_steps=num_training_steps,
     # )
 
-    # 6.2 【测试】 打印自定义学习率曲线
-    plot_customized_lr_curve(optimizer, scheduler, total_steps=num_training_steps,
-                             label=f"d_model={d_model}, warmup={warmup_steps}")
-
-    ##############################【Test - optimizer | scheduler 】##############################
+    # # 6.2 【测试】 打印自定义学习率曲线
+    # plot_customized_lr_curve(optimizer, scheduler, total_steps=num_training_steps,
+    #                          label=f"d_model={d_model}, warmup={warmup_steps}")
+    #
+    # ##############################【Test - optimizer | scheduler 】##############################
 
     # 7. 自定义损失函数
     # PyTorch 的 CrossEntropyLoss 默认就支持 from_logits=True
