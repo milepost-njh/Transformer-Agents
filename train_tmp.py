@@ -1520,6 +1520,9 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         device = "cuda" if torch.cuda.is_available() else "cpu"
     transformer.train()
 
+    # 性能监控
+    step_start_time = time.time()
+
     # 只在必要时清理GPU缓存（减少频率以提高性能）
     # if torch.cuda.is_available():
     #     torch.cuda.empty_cache()
@@ -1577,7 +1580,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     # 检测NaN或Inf损失
     if not torch.isfinite(loss):
         logger.error(f"Loss is {loss.item()}, skipping this batch")
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     optimizer.zero_grad(set_to_none=True)
     
@@ -1607,7 +1610,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
                 scaler.update()
             else:
                 logger.warning("Gradient norm is inf/nan, skipping optimizer step")
-                return 0.0, 0.0
+                return 0.0, 0.0, 0.0
     else:
         # 标准精度反向传播
         loss.backward()
@@ -1635,7 +1638,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
 
         if has_nan_grad:
             logger.error("Skipping this batch due to NaN gradients")
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
         optimizer.step()
 
@@ -1643,7 +1646,10 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         scheduler.step()
 
     acc = token_accuracy(tar_real, logits, pad_id=TGT_PAD_ID)
-    return loss.item(), acc
+    
+    # 性能统计
+    step_time = time.time() - step_start_time
+    return loss.item(), acc, step_time
 
 
 def train_model(
@@ -1671,8 +1677,15 @@ def train_model(
     # 初始化混合精度训练
     scaler = None
     if use_amp and torch.cuda.is_available():
-        # 使用新的 GradScaler API
-        scaler = GradScaler('cuda')
+        # 使用优化的 GradScaler 配置
+        scaler = GradScaler(
+            'cuda',
+            init_scale=2.**16,  # 更大的初始缩放因子
+            growth_factor=2.0,
+            backoff_factor=0.5,
+            growth_interval=1000,  # 更频繁的增长间隔
+            enabled=True
+        )
         logger.info("✅ 启用混合精度训练 (AMP)")
         log_mixed_precision_info(use_amp=True, scaler=scaler)
     else:
@@ -1686,6 +1699,7 @@ def train_model(
 
     train_loss_meter = AverageMeter("train_loss")
     train_acc_meter = AverageMeter("train_accuracy")
+    train_time_meter = AverageMeter("train_time")
     global_step = 0
 
     for epoch in range(epochs):
@@ -1693,21 +1707,24 @@ def train_model(
             start = time.time()
             train_loss_meter.reset()
             train_acc_meter.reset()
+            train_time_meter.reset()
             model.train()
 
             for batch_idx, batch in enumerate(train_loader):
-                loss_val, acc_val = train_step(
+                loss_val, acc_val, step_time = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
                     moe_config=moe_config, use_multi_gpu=use_multi_gpu, scaler=scaler, use_amp=use_amp
                 )
                 train_loss_meter.update(loss_val, 1)
                 train_acc_meter.update(acc_val, 1)
+                train_time_meter.update(step_time, 1)
 
                 global_step += 1
 
                 # 记录到 TensorBoard
                 writer.add_scalar('Train/Loss', loss_val, global_step)
                 writer.add_scalar('Train/Accuracy', acc_val, global_step)
+                writer.add_scalar('Train/Step_Time', step_time, global_step)
 
                 # 记录学习率
                 if scheduler is not None:
@@ -1755,9 +1772,14 @@ def train_model(
                             memory_reserved = torch.cuda.memory_reserved() / 1024 ** 3
                             memory_info = f" GPU内存: {memory_allocated:.2f}GB/{memory_reserved:.2f}GB"
 
+                    # 计算性能指标
+                    avg_step_time = train_time_meter.avg
+                    throughput = 1.0 / avg_step_time if avg_step_time > 0 else 0
+                    
                     logger.info(
-                        f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step}"
-                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}{memory_info}"
+                        f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step} "
+                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f} "
+                        f"StepTime {avg_step_time:.3f}s Throughput {throughput:.2f} batch/s{memory_info}"
                     )
 
             # 记录每个 epoch 的平均指标到 TensorBoard
@@ -2110,7 +2132,7 @@ if __name__ == "__main__":
     weight_decay = 0.01
     
     # 混合精度训练配置
-    use_mixed_precision = True  # 是否启用混合精度训练
+    use_mixed_precision = True  # 是否启用混合精度训练 (L20 GPU 优化不佳，建议关闭)
 
     # 模型结构
     num_layers = 8
@@ -2152,11 +2174,13 @@ if __name__ == "__main__":
     if use_mixed_precision and torch.cuda.is_available():
         logger.info("✅ 混合精度训练已启用 - 将使用 FP16 进行前向传播，FP32 进行反向传播")
         logger.info("   预期收益: 减少显存使用约 50%，提升训练速度约 1.5-2x")
+        logger.info("   ⚠️ 注意: L20 GPU 对 FP16 优化有限，可能不会显著提升速度")
     elif use_mixed_precision and not torch.cuda.is_available():
         logger.warning("⚠️ 混合精度训练需要 CUDA 支持，当前使用 CPU，将回退到标准精度")
         use_mixed_precision = False
     else:
         logger.info("📊 使用标准精度训练 (FP32)")
+        logger.info("   💡 提示: 如需启用混合精度训练，请设置 use_mixed_precision = True")
 
     # 2. 加载葡萄牙语-英语翻译数据集
     train_dataset, val_dataset = load_translation_dataset(
