@@ -26,6 +26,7 @@ from loguru import logger
 from torch.utils.tensorboard import SummaryWriter
 from modeling_deepseek import DeepseekV3MoE
 from collections import OrderedDict
+from core.normalization import RMSNorm, LayerNorm
 
 # 多卡训练设置
 import torch.distributed as dist
@@ -772,12 +773,12 @@ class MultiHeadAttention(nn.Module):
 
             # Q 投影：低秩分解
             self.q_a_proj = nn.Linear(d_model, self.q_lora_rank, bias=True)
-            self.q_a_layernorm = nn.LayerNorm(self.q_lora_rank, eps=1e-6)
+            self.q_a_layernorm = RMSNorm(self.q_lora_rank, eps=1e-6)
             self.q_b_proj = nn.Linear(self.q_lora_rank, num_heads * self.q_head_dim, bias=False)
 
             # KV 投影：压缩的 KV 投影
             self.kv_a_proj_with_mqa = nn.Linear(d_model, self.kv_lora_rank + self.qk_rope_head_dim, bias=True)
-            self.kv_a_layernorm = nn.LayerNorm(self.kv_lora_rank, eps=1e-6)
+            self.kv_a_layernorm = RMSNorm(self.kv_lora_rank, eps=1e-6)
             self.kv_b_proj = nn.Linear(
                 self.kv_lora_rank,
                 num_heads * (self.qk_nope_head_dim + self.v_head_dim),
@@ -995,8 +996,8 @@ class EncoderLayer(nn.Module):
                                       q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)  # 支持 MLA
         self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)  # 支持 MoE
 
-        self.norm1 = nn.LayerNorm(d_model, eps=1e-6)
-        self.norm2 = nn.LayerNorm(d_model, eps=1e-6)
+        self.norm1 = RMSNorm(d_model, eps=1e-6)
+        self.norm2 = RMSNorm(d_model, eps=1e-6)
 
         self.dropout1 = nn.Dropout(rate)
         self.dropout2 = nn.Dropout(rate)
@@ -1009,7 +1010,7 @@ class EncoderLayer(nn.Module):
         # Self-Attention
         attn_out, _ = self.mha(x, x, x, mask=src_mask)  # [B, L, d_model], [B, H, L, L]
         attn_out = self.dropout1(attn_out)  # 训练模式下生效
-        out1 = self.norm1(x + attn_out)  # 残差 + LayerNorm
+        out1 = self.norm1(x + attn_out)  # 残差 + RMSNorm
 
         # Feed Forward
         ffn_out = self.ffn(out1)  # [B, L, d_model] 或 (ffn_out, router_logits) 如果使用 MoE
@@ -1049,9 +1050,9 @@ class DecoderLayer(nn.Module):
 
         self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)
 
-        self.norm1 = nn.LayerNorm(d_model, eps=1e-6)
-        self.norm2 = nn.LayerNorm(d_model, eps=1e-6)
-        self.norm3 = nn.LayerNorm(d_model, eps=1e-6)
+        self.norm1 = RMSNorm(d_model, eps=1e-6)
+        self.norm2 = RMSNorm(d_model, eps=1e-6)
+        self.norm3 = RMSNorm(d_model, eps=1e-6)
 
         self.dropout1 = nn.Dropout(rate)
         self.dropout2 = nn.Dropout(rate)
@@ -2139,15 +2140,14 @@ if __name__ == "__main__":
         elif isinstance(module, nn.Embedding):
             # Embedding层使用更小的初始化范围
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-        elif isinstance(module, nn.LayerNorm):
-            # LayerNorm保持标准初始化
+        elif isinstance(module, RMSNorm):
+            # RMSNorm保持标准初始化
             torch.nn.init.ones_(module.weight)
-            torch.nn.init.zeros_(module.bias)
 
 
     # 应用权重初始化
     model.apply(init_weights)
-    logger.info("✅ Applied improved weight initialization")
+    logger.info("✅ Applied improved weight initialization with RMSNorm")
 
     # 1.2 为多卡训练包装模型
     model = wrap_model_for_multi_gpu(model, use_multi_gpu, gpu_count)
