@@ -2095,11 +2095,6 @@ if __name__ == "__main__":
     # 3.4 【测试】 batch data loader
     test_dataloaders(train_loader2, val_loader2)
 
-    # 4. 位置编码
-    # 默认启用 RoPE，不再可视化绝对位置编码；如需对比，可手动打开：
-    # position_embedding = get_position_embedding(max_length, d_model)
-    # plot_position_embedding(position_embedding)
-
     # MLA 配置
     use_mla = True  # 是否使用 MLA
     q_lora_rank = d_model // 2  # Q 的低秩维度，默认为 d_model 的一半
@@ -2149,135 +2144,8 @@ if __name__ == "__main__":
     model.apply(init_weights)
     logger.info("✅ Applied improved weight initialization with RMSNorm")
 
-    # 1.2 为多卡训练包装模型
+    # 6. 为多卡训练包装模型
     model = wrap_model_for_multi_gpu(model, use_multi_gpu, gpu_count)
-
-    # 创建不带 MoE 但带 MLA 的模型用于参数对比
-    model_no_moe = Transformer(
-        num_layers=num_layers,
-        input_vocab_size=input_vocab_size,
-        target_vocab_size=target_vocab_size,
-        max_length=max_length,
-        d_model=d_model,
-        num_heads=num_heads,
-        dff=dff,
-        rate=dropout_rate,
-        src_padding_idx=pt_tokenizer.pad_token_id if hasattr(pt_tokenizer, "pad_token_id") else None,
-        tgt_padding_idx=en_tokenizer.pad_token_id if hasattr(en_tokenizer, "pad_token_id") else None,
-        use_rope=True,
-        use_moe=False,
-        moe_config=None,
-        use_mla=use_mla,
-        q_lora_rank=q_lora_rank,
-        kv_lora_rank=kv_lora_rank,
-    )
-
-    # 创建不带 MLA 的模型用于对比 MLA 效果
-    model_no_mla = Transformer(
-        num_layers=num_layers,
-        input_vocab_size=input_vocab_size,
-        target_vocab_size=target_vocab_size,
-        max_length=max_length,
-        d_model=d_model,
-        num_heads=num_heads,
-        dff=dff,
-        rate=dropout_rate,
-        src_padding_idx=pt_tokenizer.pad_token_id if hasattr(pt_tokenizer, "pad_token_id") else None,
-        tgt_padding_idx=en_tokenizer.pad_token_id if hasattr(en_tokenizer, "pad_token_id") else None,
-        use_rope=True,
-        use_moe=use_moe,
-        moe_config=moe_config,
-        use_mla=False,  # 不使用 MLA
-        q_lora_rank=q_lora_rank,
-        kv_lora_rank=kv_lora_rank,
-    )
-
-
-    # 参数统计函数
-    def count_parameters(model):
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        return total_params, trainable_params
-
-
-    # 不带 MoE 的参数数量
-    no_moe_total, no_moe_trainable = count_parameters(model_no_moe)
-
-    # 不带 MLA 的参数数量
-    no_mla_total, no_mla_trainable = count_parameters(model_no_mla)
-
-    # 带 MoE + MLA 的参数数量
-    moe_total, moe_trainable = count_parameters(model)
-
-    # 打印参数对比
-    logger.info("=" * 80)
-    logger.info("🔍 模型参数对比分析")
-    logger.info("=" * 80)
-    logger.info(f"📊 基准模型 (不带 MoE, 带 MLA):")
-    logger.info(f"   总参数: {no_moe_total:,}")
-    logger.info(f"   可训练参数: {no_moe_trainable:,}")
-    logger.info(f"📊 对比模型 (带 MoE, 不带 MLA):")
-    logger.info(f"   总参数: {no_mla_total:,}")
-    logger.info(f"   可训练参数: {no_mla_trainable:,}")
-    logger.info(f"📊 最终模型 (带 MoE + 带 MLA):")
-    logger.info(f"   总参数: {moe_total:,}")
-    logger.info(f"   可训练参数: {moe_trainable:,}")
-
-    # 计算 MoE 带来的参数增长
-    logger.info(f"📈 MoE 带来的参数增长 (对比基准模型):")
-    moe_param_increase = no_mla_total - no_moe_total
-    logger.info(f"   绝对增长: +{moe_param_increase:,}")
-    if no_moe_total > 0:
-        logger.info(f"   相对增长: +{(moe_param_increase / no_moe_total) * 100:.2f}%")
-
-    # 计算 MLA 带来的参数减少
-    logger.info(f"💡 MLA 带来的参数变化 (对比不带 MLA 的 MoE 模型):")
-    mla_param_reduction = no_mla_total - moe_total
-    logger.info(f"   参数减少: {mla_param_reduction:,}")
-    if no_mla_total > 0:
-        logger.info(f"   参数节省比例: {(mla_param_reduction / no_mla_total) * 100:.2f}%")
-    logger.info(f"   说明: 添加 MLA 后，相比不带 MLA 的模型减少了 {mla_param_reduction:,} 个参数")
-
-    # MoE 配置信息
-    if use_moe:
-        logger.info(f"🔧 MoE 配置:")
-        logger.info(f"   专家数量: {moe_config.num_experts}")
-        logger.info(f"   每 token 激活专家: {moe_config.num_experts_per_tok}")
-        logger.info(f"   路由专家数量: {moe_config.n_routed_experts}")
-
-        # 计算 MoE 相关参数
-        moe_params_per_expert = dff * d_model * 2  # 每个专家的参数（简化计算）
-        total_moe_params = moe_config.n_routed_experts * moe_params_per_expert
-        logger.info(f"   MoE 专家参数: {moe_params_per_expert:,} 每专家")
-        logger.info(f"   总 MoE 参数: {total_moe_params:,}")
-
-    # MLA 配置信息
-    if use_mla:
-        logger.info(f"🔧 MLA 配置:")
-        logger.info(f"   使用 MLA (Multi-head Latent Attention): {use_mla}")
-        logger.info(f"   Q LoRA Rank: {q_lora_rank}")
-        logger.info(f"   KV LoRA Rank: {kv_lora_rank}")
-        logger.info(f"   通过低秩分解减少注意力参数量")
-
-    logger.info("=" * 80)
-
-    # 删除对比模型以节省内存
-    del model_no_moe
-    del model_no_mla
-    import gc
-
-    gc.collect()
-    # assert 1==0
-    ##############################【Test - optimizer | scheduler 】##############################
-    # # 6. 自定义学习率和优化器
-    # optimizer = optim.Adam(model.parameters(),
-    #                    lr=learning_rate,
-    #                    betas=betas,
-    #                    eps=eps)
-    # # 自定义学习率
-    # scheduler = CustomizedSchedule(optimizer, d_model=d_model, warmup_steps=warmup_steps)
-
-    # 6. 自定义学习率和优化器
     num_training_steps = len(train_loader2) * epochs
 
     optimizer = optim.AdamW(
@@ -2296,27 +2164,6 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps,
         num_cycles=0.5,  # 保持0.5个周期，让学习率充分衰减
     )
-
-    # 自定义学习率
-    # num_training_steps = len(train_loader2) * epochs
-    # # scheduler = optim.lr_scheduler.CosineAnnealingLR(
-    # #     optimizer,
-    # #     T_max=num_training_steps,
-    # #     eta_min=1e-6
-    # # )
-    # # 设置 warmup steps
-    # warmup_steps = int(0.1 * num_training_steps)  # 10% 步数用作 warmup
-    # scheduler = get_cosine_schedule_with_warmup(
-    #     optimizer,
-    #     num_warmup_steps=warmup_steps,
-    #     num_training_steps=num_training_steps,
-    # )
-
-    # # 6.2 【测试】 打印自定义学习率曲线
-    # plot_customized_lr_curve(optimizer, scheduler, total_steps=num_training_steps,
-    #                          label=f"d_model={d_model}, warmup={warmup_steps}")
-    #
-    # ##############################【Test - optimizer | scheduler 】##############################
 
     # 7. 自定义损失函数
     # PyTorch 的 CrossEntropyLoss 默认就支持 from_logits=True
@@ -2346,4 +2193,3 @@ if __name__ == "__main__":
     # else:
     #     start_epoch, global_step = load_ckpt(model, optimizer, scheduler, device=device)
     #     logger.info("Checkpoint loaded successfully!")
-
