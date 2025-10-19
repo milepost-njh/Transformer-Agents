@@ -1007,7 +1007,7 @@ class EncoderLayer(nn.Module):
         返回:
           out: [B, L, d_model] 或 (out, router_logits) 如果使用 MoE
         """
-        # Self-Attention
+        # TODO: 全局自注意力 - 编码器中的自注意力，可以关注序列中的所有位置
         attn_out, _ = self.mha(x, x, x, mask=src_mask)  # [B, L, d_model], [B, H, L, L]
         attn_out = self.dropout1(attn_out)  # 训练模式下生效
         out1 = self.norm1(x + attn_out)  # 残差 + RMSNorm
@@ -1065,12 +1065,12 @@ class DecoderLayer(nn.Module):
             tgt_mask: torch.Tensor = None,
             enc_dec_mask: torch.Tensor = None,
     ):
-        # 1) Masked Self-Attention (decoder 自注意力，使用 look-ahead+padding 的合并 mask)
+        # TODO: 掩码自注意力 - 解码器自注意力，使用look-ahead+padding掩码防止信息泄露
         attn1_out, attn_weights1 = self.mha1(x, x, x, mask=tgt_mask)  # [B,Lt,D], [B,H,Lt,Lt]
         attn1_out = self.dropout1(attn1_out)
         out1 = self.norm1(x + attn1_out)
 
-        # 2) Cross-Attention (query=out1, key/value=enc_out)，使用 encoder padding 掩码
+        # TODO: 交叉注意力 - 解码器对编码器输出的注意力，query来自decoder，key/value来自encoder
         attn2_out, attn_weights2 = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask)  # [B,Lt,D], [B,H,Lt,Ls]
         attn2_out = self.dropout2(attn2_out)
         out2 = self.norm2(out1 + attn2_out)
@@ -2168,6 +2168,7 @@ if __name__ == "__main__":
     # 7. 自定义损失函数
     # PyTorch 的 CrossEntropyLoss 默认就支持 from_logits=True
     PAD_ID_TGT = en_tokenizer.pad_token_id
+    global loss_object
     loss_object = nn.CrossEntropyLoss(reduction="none", ignore_index=PAD_ID_TGT)
 
     # 8. 训练模型 && checkpoints

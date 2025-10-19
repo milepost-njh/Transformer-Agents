@@ -193,6 +193,14 @@ def test_tokenizers(en_tokenizer, pt_tokenizer,
         token_str = pt_tokenizer.convert_ids_to_tokens(tid)
         print(f"{tid:>6} --> {single_decoded!r}  |  {tid:>6} --> {token_str!r}")
 
+# 1) 小工具：编码 + 添加 BOS/EOS
+def encode_with_bos_eos(tokenizer, text: str):
+    ids = tokenizer.encode(text, add_special_tokens=False)
+    bos_id = tokenizer.bos_token_id
+    eos_id = tokenizer.eos_token_id
+    if bos_id is None or eos_id is None:
+        raise ValueError("请确保 tokenizer 设置了 bos_token/eos_token")
+    return [bos_id] + ids + [eos_id]
 
 def build_dataloaders(
         train_dataset,
@@ -220,15 +228,6 @@ def build_dataloaders(
     返回:
         train_loader, val_loader
     """
-
-    # 1) 小工具：编码 + 添加 BOS/EOS
-    def encode_with_bos_eos(tokenizer, text: str):
-        ids = tokenizer.encode(text, add_special_tokens=False)
-        bos_id = tokenizer.bos_token_id
-        eos_id = tokenizer.eos_token_id
-        if bos_id is None or eos_id is None:
-            raise ValueError("请确保 tokenizer 设置了 bos_token/eos_token")
-        return [bos_id] + ids + [eos_id]
 
     # 2) 构造已过滤的样本对
     def build_filtered_pairs(hf_split, pt_tok, en_tok, max_len: int):

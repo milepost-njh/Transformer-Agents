@@ -20,14 +20,15 @@ from transformers import get_cosine_schedule_with_warmup
 
 from .utils import check_env
 from core.models.transformers.transformer_model import Transformer, get_position_embedding, plot_position_embedding
-from core.datasets.translate_datasets import load_translation_dataset, train_and_load_tokenizers, test_tokenizers, build_dataloaders, test_dataloaders
+from core.datasets.translate_datasets import (
+    load_translation_dataset, train_and_load_tokenizers, test_tokenizers, 
+    build_dataloaders, test_dataloaders, encode_with_bos_eos,
+)
 from core.checkpointing.utils import save_ckpt, load_ckpt
 from core.mask_utils.mask_utils import create_masks
 from core.optimizer.optimizer import CustomizedSchedule, plot_customized_lr_curve
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"
-
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,5,6,7"  # 使用4张GPU
 
 def loss_function(real, pred):
     """
@@ -366,10 +367,10 @@ if __name__ == "__main__":
     # 0. 常量定义
 
     # 数据文件地址
-    train_path = "/home/nijiahui/Datas/por_eng_csv/por_en_train.csv"
-    val_path = "/home/nijiahui/Datas/por_eng_csv/por_en_test.csv"
+    train_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_train.csv"
+    val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
-    checkpoint_dir = './checkpoints-tmp22'
+    checkpoint_dir = './checkpoints'
 
     # 构建词表参数
     vocab_size = 2 ** 13  # 词表大小
@@ -492,30 +493,11 @@ if __name__ == "__main__":
     warmup_steps = int(0.1 * num_training_steps)  # 10% 步数用作 warmup
     scheduler = CustomizedSchedule(optimizer, d_model=d_model, warmup_steps=warmup_steps)
 
-    # 自定义学习率
-    # num_training_steps = len(train_loader2) * epochs
-    # # scheduler = optim.lr_scheduler.CosineAnnealingLR(
-    # #     optimizer,
-    # #     T_max=num_training_steps,
-    # #     eta_min=1e-6
-    # # )
-    # # 设置 warmup steps
-    # warmup_steps = int(0.1 * num_training_steps)  # 10% 步数用作 warmup
-    # scheduler = get_cosine_schedule_with_warmup(
-    #     optimizer,
-    #     num_warmup_steps=warmup_steps,
-    #     num_training_steps=num_training_steps,
-    # )
-
-    # 6.2 【测试】 打印自定义学习率曲线
-    plot_customized_lr_curve(optimizer, scheduler, total_steps=num_training_steps,
-                             label=f"d_model={d_model}, warmup={warmup_steps}")
-
     ##############################【Test - optimizer | scheduler 】##############################
-
     # 7. 自定义损失函数
     # PyTorch 的 CrossEntropyLoss 默认就支持 from_logits=True
     PAD_ID_TGT = en_tokenizer.pad_token_id
+    global loss_object
     loss_object = nn.CrossEntropyLoss(reduction="none", ignore_index=PAD_ID_TGT)
 
     # 8. 训练模型 && checkpoints
