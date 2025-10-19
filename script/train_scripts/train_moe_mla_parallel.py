@@ -26,6 +26,7 @@ from loguru import logger
 from torch.utils.tensorboard import SummaryWriter
 from modeling_deepseek import DeepseekV3MoE
 from collections import OrderedDict
+from core.normalization import RMSNorm, LayerNorm
 
 # 多卡训练设置
 import torch.distributed as dist
@@ -772,12 +773,12 @@ class MultiHeadAttention(nn.Module):
 
             # Q 投影：低秩分解
             self.q_a_proj = nn.Linear(d_model, self.q_lora_rank, bias=True)
-            self.q_a_layernorm = nn.LayerNorm(self.q_lora_rank, eps=1e-6)
+            self.q_a_layernorm = RMSNorm(self.q_lora_rank, eps=1e-6)
             self.q_b_proj = nn.Linear(self.q_lora_rank, num_heads * self.q_head_dim, bias=False)
 
             # KV 投影：压缩的 KV 投影
             self.kv_a_proj_with_mqa = nn.Linear(d_model, self.kv_lora_rank + self.qk_rope_head_dim, bias=True)
-            self.kv_a_layernorm = nn.LayerNorm(self.kv_lora_rank, eps=1e-6)
+            self.kv_a_layernorm = RMSNorm(self.kv_lora_rank, eps=1e-6)
             self.kv_b_proj = nn.Linear(
                 self.kv_lora_rank,
                 num_heads * (self.qk_nope_head_dim + self.v_head_dim),
@@ -995,8 +996,8 @@ class EncoderLayer(nn.Module):
                                       q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)  # 支持 MLA
         self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)  # 支持 MoE
 
-        self.norm1 = nn.LayerNorm(d_model, eps=1e-6)
-        self.norm2 = nn.LayerNorm(d_model, eps=1e-6)
+        self.norm1 = RMSNorm(d_model, eps=1e-6)
+        self.norm2 = RMSNorm(d_model, eps=1e-6)
 
         self.dropout1 = nn.Dropout(rate)
         self.dropout2 = nn.Dropout(rate)
@@ -1009,7 +1010,7 @@ class EncoderLayer(nn.Module):
         # Self-Attention
         attn_out, _ = self.mha(x, x, x, mask=src_mask)  # [B, L, d_model], [B, H, L, L]
         attn_out = self.dropout1(attn_out)  # 训练模式下生效
-        out1 = self.norm1(x + attn_out)  # 残差 + LayerNorm
+        out1 = self.norm1(x + attn_out)  # 残差 + RMSNorm
 
         # Feed Forward
         ffn_out = self.ffn(out1)  # [B, L, d_model] 或 (ffn_out, router_logits) 如果使用 MoE
@@ -1049,9 +1050,9 @@ class DecoderLayer(nn.Module):
 
         self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)
 
-        self.norm1 = nn.LayerNorm(d_model, eps=1e-6)
-        self.norm2 = nn.LayerNorm(d_model, eps=1e-6)
-        self.norm3 = nn.LayerNorm(d_model, eps=1e-6)
+        self.norm1 = RMSNorm(d_model, eps=1e-6)
+        self.norm2 = RMSNorm(d_model, eps=1e-6)
+        self.norm3 = RMSNorm(d_model, eps=1e-6)
 
         self.dropout1 = nn.Dropout(rate)
         self.dropout2 = nn.Dropout(rate)
@@ -2005,7 +2006,7 @@ if __name__ == "__main__":
     # 模型训练超参数
     batch_size = 64  # 批处理数
     warmup_steps = 4000  # warmup steps数
-    epochs = 20  # 训练轮数
+    epochs = 15  # 训练轮数
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
@@ -2094,11 +2095,6 @@ if __name__ == "__main__":
     # 3.4 【测试】 batch data loader
     test_dataloaders(train_loader2, val_loader2)
 
-    # 4. 位置编码
-    # 默认启用 RoPE，不再可视化绝对位置编码；如需对比，可手动打开：
-    # position_embedding = get_position_embedding(max_length, d_model)
-    # plot_position_embedding(position_embedding)
-
     # MLA 配置
     use_mla = True  # 是否使用 MLA
     q_lora_rank = d_model // 2  # Q 的低秩维度，默认为 d_model 的一半
@@ -2139,15 +2135,14 @@ if __name__ == "__main__":
         elif isinstance(module, nn.Embedding):
             # Embedding层使用更小的初始化范围
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-        elif isinstance(module, nn.LayerNorm):
-            # LayerNorm保持标准初始化
+        elif isinstance(module, RMSNorm):
+            # RMSNorm保持标准初始化
             torch.nn.init.ones_(module.weight)
-            torch.nn.init.zeros_(module.bias)
 
 
     # 应用权重初始化
     model.apply(init_weights)
-    logger.info("✅ Applied improved weight initialization")
+    logger.info("✅ Applied improved weight initialization with RMSNorm")
 
     # 1.2 为多卡训练包装模型
     model = wrap_model_for_multi_gpu(model, use_multi_gpu, gpu_count)
@@ -2265,19 +2260,8 @@ if __name__ == "__main__":
     del model_no_moe
     del model_no_mla
     import gc
-
     gc.collect()
-    # assert 1==0
-    ##############################【Test - optimizer | scheduler 】##############################
-    # # 6. 自定义学习率和优化器
-    # optimizer = optim.Adam(model.parameters(),
-    #                    lr=learning_rate,
-    #                    betas=betas,
-    #                    eps=eps)
-    # # 自定义学习率
-    # scheduler = CustomizedSchedule(optimizer, d_model=d_model, warmup_steps=warmup_steps)
 
-    # 6. 自定义学习率和优化器
     num_training_steps = len(train_loader2) * epochs
 
     optimizer = optim.AdamW(
@@ -2296,27 +2280,6 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps,
         num_cycles=0.5,  # 保持0.5个周期，让学习率充分衰减
     )
-
-    # 自定义学习率
-    # num_training_steps = len(train_loader2) * epochs
-    # # scheduler = optim.lr_scheduler.CosineAnnealingLR(
-    # #     optimizer,
-    # #     T_max=num_training_steps,
-    # #     eta_min=1e-6
-    # # )
-    # # 设置 warmup steps
-    # warmup_steps = int(0.1 * num_training_steps)  # 10% 步数用作 warmup
-    # scheduler = get_cosine_schedule_with_warmup(
-    #     optimizer,
-    #     num_warmup_steps=warmup_steps,
-    #     num_training_steps=num_training_steps,
-    # )
-
-    # # 6.2 【测试】 打印自定义学习率曲线
-    # plot_customized_lr_curve(optimizer, scheduler, total_steps=num_training_steps,
-    #                          label=f"d_model={d_model}, warmup={warmup_steps}")
-    #
-    # ##############################【Test - optimizer | scheduler 】##############################
 
     # 7. 自定义损失函数
     # PyTorch 的 CrossEntropyLoss 默认就支持 from_logits=True
@@ -2346,5 +2309,3 @@ if __name__ == "__main__":
     # else:
     #     start_epoch, global_step = load_ckpt(model, optimizer, scheduler, device=device)
     #     logger.info("Checkpoint loaded successfully!")
-
-
