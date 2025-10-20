@@ -1,8 +1,12 @@
 # LayerNorm vs RMSNorm 对比分析
 
+> **文档类型**：技术对比 + 代码分析  
+> **难度级别**：中级  
+> **适用对象**：算法工程师、模型优化者、代码开发者
+
 ## 概述
 
-本文档对比分析 LayerNorm 和 RMSNorm 两种归一化方法的原理、实现和优缺点，基于 `core/normalization/layers.py` 中的实现。
+本文档对比分析 LayerNorm 和 RMSNorm 两种归一化方法的原理、实现和优缺点，并详细分析代码中的具体使用情况，基于 `core/normalization/layers.py` 中的实现。
 
 ## 核心差异
 
@@ -110,6 +114,117 @@ RMSNorm 是 LayerNorm 的轻量级替代方案，在保持相似性能的同时�
 - 新项目优先考虑 RMSNorm
 - 大型模型必须使用 RMSNorm  
 - 传统模型可继续使用 LayerNorm
+
+## 代码中的实际使用分析
+
+### 归一化层使用统计
+
+代码中主要使用**RMSNorm**，总共使用了**7次**：
+
+### 详细使用位置
+
+#### 1. MLA模式中的归一化层（2次）
+
+**位置**：MultiHeadAttention类的MLA模式
+```python
+# 在MultiHeadAttention.__init__中
+self.q_a_layernorm = RMSNorm(self.q_lora_rank, eps=1e-6)    # 第1次
+self.kv_a_layernorm = RMSNorm(self.kv_lora_rank, eps=1e-6)  # 第2次
+```
+
+**作用阶段**：
+- **Q投影的中间层**：在q_a_proj和q_b_proj之间
+- **KV投影的中间层**：在kv_a_proj和kv_b_proj之间
+
+**作用目的**：
+- 稳定低秩投影的中间表示
+- 防止梯度消失/爆炸
+- 提高训练稳定性
+
+#### 2. EncoderLayer中的归一化层（2次）
+
+**位置**：EncoderLayer类
+```python
+# 在EncoderLayer.__init__中
+self.norm1 = RMSNorm(d_model, eps=1e-6)  # 第3次
+self.norm2 = RMSNorm(d_model, eps=1e-6)  # 第4次
+```
+
+**作用阶段**：
+- **norm1**：自注意力后的残差连接
+- **norm2**：前馈网络后的残差连接
+
+**具体使用**：
+```python
+# 自注意力 + 残差 + 归一化
+attn_out, _ = self.mha(x, x, x, mask=src_mask)
+attn_out = self.dropout1(attn_out)
+out1 = self.norm1(x + attn_out)  # 第3次使用
+
+# 前馈网络 + 残差 + 归一化
+ffn_out = self.ffn(out1)
+ffn_out = self.dropout2(ffn_out)
+out2 = self.norm2(out1 + ffn_out)  # 第4次使用
+```
+
+#### 3. DecoderLayer中的归一化层（3次）
+
+**位置**：DecoderLayer类
+```python
+# 在DecoderLayer.__init__中
+self.norm1 = RMSNorm(d_model, eps=1e-6)  # 第5次
+self.norm2 = RMSNorm(d_model, eps=1e-6)  # 第6次
+self.norm3 = RMSNorm(d_model, eps=1e-6)  # 第7次
+```
+
+**作用阶段**：
+- **norm1**：掩码自注意力后的残差连接
+- **norm2**：交叉注意力后的残差连接
+- **norm3**：前馈网络后的残差连接
+
+**具体使用**：
+```python
+# 掩码自注意力 + 残差 + 归一化
+attn1_out, attn_weights1 = self.mha1(x, x, x, mask=tgt_mask)
+attn1_out = self.dropout1(attn1_out)
+out1 = self.norm1(x + attn1_out)  # 第5次使用
+
+# 交叉注意力 + 残差 + 归一化
+attn2_out, attn_weights2 = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask)
+attn2_out = self.dropout2(attn2_out)
+out2 = self.norm2(out1 + attn2_out)  # 第6次使用
+
+# 前馈网络 + 残差 + 归一化
+ffn_out = self.ffn(out2)
+ffn_out = self.dropout3(ffn_out)
+out3 = self.norm3(out2 + ffn_out)  # 第7次使用
+```
+
+### 归一化层的设计模式
+
+#### Post-Norm模式
+代码中使用的是**Post-Norm**模式：
+```python
+# Post-Norm模式
+output = norm(input + sublayer(input))
+```
+
+#### 残差连接 + 归一化
+每个子层都遵循相同的模式：
+1. 计算子层输出
+2. 应用dropout
+3. 残差连接
+4. 归一化
+
+### 使用总结
+
+代码中总共使用了**7次RMSNorm**：
+
+1. **MLA模式**：2次（Q和KV投影的中间层）
+2. **编码器层**：2次（自注意力和前馈网络后）
+3. **解码器层**：3次（掩码自注意力、交叉注意力和前馈网络后）
+
+所有归一化层都采用Post-Norm模式，配合残差连接使用，确保模型训练的稳定性和性能。RMSNorm的选择体现了对计算效率和数值稳定性的重视。
 
 ---
 
