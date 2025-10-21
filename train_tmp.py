@@ -2004,6 +2004,7 @@ if __name__ == "__main__":
     input_vocab_size = pt_tokenizer.vocab_size
     target_vocab_size = en_tokenizer.vocab_size
 
+    # 4. 构建模型
     model = Transformer(
         num_layers=num_layers,
         input_vocab_size=input_vocab_size,
@@ -2035,7 +2036,32 @@ if __name__ == "__main__":
             torch.nn.init.ones_(module.weight)
 
     model.apply(init_weights)
-    logger.info("✅ 模型初始化完成")
+    logger.info("✅ 标准 Transformer 模型初始化完成")
+    
+    # MTP 集成（可选）
+    use_mtp = True  # 是否启用 MTP (Multi-Token Prediction)
+    
+    if use_mtp:
+        from core.models.deepseek_mtp import DeepSeekMTPConfig, add_mtp_to_transformer
+        
+        # 创建 MTP 配置
+        mtp_config = DeepSeekMTPConfig(
+            hidden_size=d_model,
+            num_nextn_predict_layers=2,  # MTP 预测层数
+            vocab_size=target_vocab_size,
+            max_position_embeddings=max_length,
+            use_moe=use_moe,
+            moe_config=moe_config,
+            mtp_loss_weight=0.1,  # MTP 损失权重
+        )
+        
+        # 为现有 Transformer 添加 MTP 功能
+        model = add_mtp_to_transformer(model, mtp_config)
+        logger.info("✅ MTP 功能已添加到 Transformer")
+        logger.info(f"   - MTP 预测层数: {mtp_config.num_nextn_predict_layers}")
+        logger.info(f"   - 损失权重: {mtp_config.mtp_loss_weight}")
+    else:
+        logger.info("ℹ️  使用标准 Transformer（无 MTP）")
 
     # 5. DDP 后端：初始化并包装模型
     p_cfg = ParallelConfig(mode=ParallelMode.ddp)
