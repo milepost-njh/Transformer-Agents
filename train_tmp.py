@@ -1597,9 +1597,14 @@ def train_model(
                             memory_reserved = torch.cuda.memory_reserved() / 1024 ** 3
                             memory_info = f" GPU内存: {memory_allocated:.2f}GB/{memory_reserved:.2f}GB"
 
+                    # 添加 MTP 训练标识（只在第一个 epoch 的第一个 batch 打印）
+                    mtp_info = ""
+                    if epoch == 0 and batch_idx == 0:
+                        mtp_info = " [MTP模式]"
+                    
                     logger.info(
                         f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step}"
-                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}{memory_info}"
+                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}{memory_info}{mtp_info}"
                     )
 
             # 记录每个 epoch 的平均指标到 TensorBoard
@@ -2057,9 +2062,10 @@ if __name__ == "__main__":
         
         # 为现有 Transformer 添加 MTP 功能
         model = add_mtp_to_transformer(model, mtp_config)
-        logger.info("✅ MTP 功能已添加到 Transformer")
+        logger.info("🚀 启用 MTP (Multi-Token Prediction) 训练模式")
         logger.info(f"   - MTP 预测层数: {mtp_config.num_nextn_predict_layers}")
-        logger.info(f"   - 损失权重: {mtp_config.mtp_loss_weight}")
+        logger.info(f"   - MTP 损失权重: {mtp_config.mtp_loss_weight}")
+        logger.info("   - 模型将进行多 token 预测训练")
     else:
         logger.info("ℹ️  使用标准 Transformer（无 MTP）")
 
@@ -2191,6 +2197,13 @@ if __name__ == "__main__":
 
     # 8. 开始训练
     logger.info(f"✅ 开始训练: lr={learning_rate}, epochs={epochs}, batch_size={batch_size}")
+    
+    # 显示训练模式
+    if use_mtp:
+        logger.info("🎯 训练模式: MTP (Multi-Token Prediction) - 多 token 预测训练")
+    else:
+        logger.info("🎯 训练模式: 标准 Transformer")
+    
     if not os.path.exists(checkpoint_dir):
         os.mkdir(checkpoint_dir)
 
