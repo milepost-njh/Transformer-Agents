@@ -24,7 +24,7 @@ from transformers import get_cosine_schedule_with_warmup
 from datetime import datetime
 from loguru import logger
 from torch.utils.tensorboard import SummaryWriter
-from modeling_deepseek import DeepseekV3MoE
+from core.models.modeling_deepseek import DeepseekV3MoE
 from collections import OrderedDict
 from core.normalization import RMSNorm, LayerNorm
 from training.parallel.config import ParallelConfig, ParallelMode
