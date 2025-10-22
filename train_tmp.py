@@ -1634,7 +1634,7 @@ def train_model(
             logger.info(f"Time taken for 1 epoch: {time.time() - start:.2f} secs\n")
 
             # 每个epoch结束后进行验证集评测
-            validate_loss, validate_acc = evaluate_on_val(model, val_loader, device)
+            validate_loss, validate_acc = evaluate_on_val(model, val_loader, device, moe_config=moe_config, mtp_config=mtp_config)
 
             # 记录验证指标到 TensorBoard
             writer.add_scalar('Epoch/Validation_Loss', validate_loss, epoch + 1)
@@ -1757,7 +1757,7 @@ def evaluate(
 
 
 @torch.no_grad()
-def evaluate_on_val(model, val_loader, device):
+def evaluate_on_val(model, val_loader, device, moe_config=None, mtp_config=None):
     model.eval()
     total_loss = 0
     total_acc = 0
@@ -1775,14 +1775,28 @@ def evaluate_on_val(model, val_loader, device):
         )
         enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
 
-        logits, _ = model(
+        model_output = model(
             inp, tar_inp,
             src_mask=enc_pad_mask,
             tgt_mask=dec_mask,
             enc_dec_mask=enc_dec_mask
         )
 
-        loss = loss_function(tar_real, logits)
+        # 处理不同模式的输出
+        if isinstance(model_output, tuple) and len(model_output) == 4:
+            # MTP 模式：logits, attention_weights, router_logits, mtp_logits
+            logits, _, router_logits, mtp_logits = model_output
+        elif isinstance(model_output, tuple) and len(model_output) == 3:
+            # MoE 模式：logits, attention_weights, router_logits
+            logits, _, router_logits = model_output
+            mtp_logits = None
+        else:
+            # 标准模式：logits, attention_weights
+            logits, _ = model_output
+            router_logits = None
+            mtp_logits = None
+
+        loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config, mtp_logits=mtp_logits, mtp_config=mtp_config)
         acc = token_accuracy(tar_real, logits, pad_id=en_tokenizer.pad_token_id)
 
         total_loss += loss.item() * inp.size(0)

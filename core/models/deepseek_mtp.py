@@ -62,11 +62,8 @@ class DeepSeekMTPLayer(nn.Module):
                 nn.Linear(config.hidden_size * 4, config.hidden_size)
             )
         
-        # 多 token 预测头
-        self.mtp_heads = nn.ModuleList([
-            nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-            for _ in range(config.num_nextn_predict_layers)
-        ])
+        # 每个MTP层只有一个预测头
+        self.mtp_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
     def forward(
         self,
@@ -104,13 +101,10 @@ class DeepSeekMTPLayer(nn.Module):
         else:
             hidden_states = self.mtp_block(hidden_states)
         
-        # 生成多 token 预测 logits
-        mtp_logits = []
-        for head in self.mtp_heads:
-            logits = head(hidden_states)
-            mtp_logits.append(logits)
+        # 每个MTP层生成一个logits
+        logits = self.mtp_head(hidden_states)
         
-        return hidden_states, mtp_logits
+        return hidden_states, [logits]  # 包装成列表保持接口一致
 
 
 class DeepSeekMTPPredictor(nn.Module):
@@ -291,16 +285,23 @@ def compute_mtp_loss(mtp_logits_list: List[torch.Tensor], target_ids: torch.Tens
     
     # 为每个预测步骤计算损失
     for i, mtp_logits in enumerate(mtp_logits_list):
-        # mtp_logits: [batch_size, 1, vocab_size]
+        # mtp_logits: [batch_size, seq_len, vocab_size] 或 [batch_size, 1, vocab_size]
         # 我们需要预测目标序列中接下来的 token
         
         # 获取目标序列中对应位置的 token
         if i + 1 < target_ids.shape[1]:
             target_tokens = target_ids[:, i + 1:i + 2]  # [batch_size, 1]
             
+            # 确保logits和targets的维度匹配
+            if mtp_logits.dim() == 3:
+                # 如果是 [batch_size, seq_len, vocab_size]，取最后一个时间步
+                pred_logits = mtp_logits[:, -1:, :]  # [batch_size, 1, vocab_size]
+            else:
+                pred_logits = mtp_logits  # [batch_size, 1, vocab_size]
+            
             # 计算交叉熵损失
             loss = F.cross_entropy(
-                mtp_logits.squeeze(1),  # [batch_size, vocab_size]
+                pred_logits.squeeze(1),  # [batch_size, vocab_size]
                 target_tokens.squeeze(1),  # [batch_size]
                 reduction='mean'
             )
