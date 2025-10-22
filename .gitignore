@@ -1,8 +1,5 @@
 # TensorBoard logs and runs
 runs/
-.idea
-.idea/*
-.idea/**
 
 # Python cache
 __pycache__/
@@ -70,6 +67,8 @@ venv.bak/
 # IDE
 .vscode/
 .idea/
+.idea/*
+.idea/**
 *.swp
 *.swo
 *~
@@ -100,8 +99,6 @@ datasets/
 *.txt
 *.tsv
 checkpoints/
-__pycache__/
-runs/
 tensorflow_datasets/
 tok_en/
 tok_pt/
