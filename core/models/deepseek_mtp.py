@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, Dict, Any, List
 import math
+from loguru import logger
 
 from core.normalization import RMSNorm
 from core.models.modeling_deepseek import DeepseekV3MoE
@@ -252,8 +253,12 @@ class DeepSeekMTPWrapper(nn.Module):
                     inputs_embeds=inputs_embeds,
                     spec_step_idx=0
                 )
+                # 只在第一次执行时打印日志
+                if not hasattr(self, '_mtp_executed'):
+                    logger.info(f"✅ MTP执行成功: 预测层数={len(mtp_logits)}, logits形状={[logits.shape for logits in mtp_logits]}")
+                    self._mtp_executed = True
             except Exception as e:
-                print(f"MTP forward error: {e}")
+                logger.error(f"MTP forward error: {e}")
                 mtp_logits = None
         
         # 返回结果
@@ -309,7 +314,14 @@ def compute_mtp_loss(mtp_logits_list: List[torch.Tensor], target_ids: torch.Tens
     
     # 平均损失并应用权重
     avg_mtp_loss = total_mtp_loss / num_predictions if num_predictions > 0 else 0.0
-    return avg_mtp_loss * mtp_loss_weight
+    final_mtp_loss = avg_mtp_loss * mtp_loss_weight
+    
+    # 只在第一次计算时打印日志
+    if not hasattr(compute_mtp_loss, '_logged'):
+        logger.info(f"✅ MTP损失计算: 预测数={num_predictions}, 平均损失={avg_mtp_loss:.4f}, 最终损失={final_mtp_loss:.4f}")
+        compute_mtp_loss._logged = True
+    
+    return final_mtp_loss
 
 
 def add_mtp_to_transformer(transformer, mtp_config: DeepSeekMTPConfig):
