@@ -1,5 +1,8 @@
 # TensorBoard logs and runs
 runs/
+.idea
+.idea/*
+.idea/**
 
 # Python cache
 __pycache__/

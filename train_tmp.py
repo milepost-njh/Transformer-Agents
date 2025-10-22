@@ -1287,15 +1287,16 @@ def plot_customized_lr_curve(optimizer, scheduler, total_steps: int, label: str 
     plt.show()
 
 
-def loss_function(real, pred, router_logits=None, moe_config=None):
+def loss_function(real, pred, router_logits=None, moe_config=None, mtp_logits=None, mtp_config=None):
     """
     Args:
         real: (B, L) target ids (shift 后)
         pred: (B, L, V) logits
         router_logits: list of router logits (如果使用 MoE)
         moe_config: MoE 配置
+        mtp_logits: list of MTP logits (如果使用 MTP)
     Returns:
-        loss (float): 平均有效 token 的交叉熵损失 + MoE 辅助损失
+        loss (float): 平均有效 token 的交叉熵损失 + MoE 辅助损失 + MTP 损失
     """
     B, L, V = pred.shape
 
@@ -1307,6 +1308,8 @@ def loss_function(real, pred, router_logits=None, moe_config=None):
     loss_ = loss_object(pred, real)  # (B*L,)
     main_loss = loss_.mean()
 
+    total_loss = main_loss
+
     # 添加 MoE 辅助损失
     if router_logits is not None and moe_config is not None:
         aux_loss = load_balancing_loss_func(
@@ -1314,10 +1317,17 @@ def loss_function(real, pred, router_logits=None, moe_config=None):
             num_experts=moe_config.n_routed_experts,
             top_k=moe_config.num_experts_per_tok
         )
-        total_loss = main_loss + moe_config.router_aux_loss_coef * aux_loss
-        return total_loss
+        total_loss = total_loss + moe_config.router_aux_loss_coef * aux_loss
 
-    return main_loss
+    # 添加 MTP 损失
+    if mtp_logits is not None:
+        from core.models.deepseek_mtp import compute_mtp_loss
+        # 获取MTP配置中的损失权重
+        mtp_loss_weight = mtp_config.mtp_loss_weight if mtp_config else 0.1
+        mtp_loss = compute_mtp_loss(mtp_logits, real.reshape(B, L), mtp_loss_weight)
+        total_loss = total_loss + mtp_loss
+
+    return total_loss
 
 
 def load_balancing_loss_func(gate_logits, num_experts: int = None, top_k=2) -> float:
@@ -1415,7 +1425,7 @@ class AverageMeter:
     def avg(self): return self.sum / max(1, self.n)
 
 
-def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False):
+def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, mtp_config=None):
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     transformer.train()
@@ -1454,14 +1464,21 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
             enc_dec_mask=enc_dec_mask
         )
 
-    # 处理 MoE 输出
-    if isinstance(transformer_output, tuple) and len(transformer_output) == 3:
+    # 处理 MoE 和 MTP 输出
+    if isinstance(transformer_output, tuple) and len(transformer_output) == 4:
+        # MTP 模式：logits, attention_weights, router_logits, mtp_logits
+        logits, _, router_logits, mtp_logits = transformer_output
+    elif isinstance(transformer_output, tuple) and len(transformer_output) == 3:
+        # MoE 模式：logits, attention_weights, router_logits
         logits, _, router_logits = transformer_output
+        mtp_logits = None
     else:
+        # 标准模式：logits, attention_weights
         logits, _ = transformer_output
         router_logits = None
+        mtp_logits = None
 
-    loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config)
+    loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config, mtp_logits=mtp_logits, mtp_config=mtp_config)
 
     # 检测NaN或Inf损失
     if not torch.isfinite(loss):
@@ -1518,6 +1535,7 @@ def train_model(
         tensorboard_dir: str = "runs",
         moe_config=None,
         use_multi_gpu: bool = False,
+        mtp_config=None,
 ):
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(tensorboard_dir, exist_ok=True)
@@ -1544,7 +1562,7 @@ def train_model(
             for batch_idx, batch in enumerate(train_loader):
                 loss_val, acc_val = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
-                    moe_config=moe_config, use_multi_gpu=use_multi_gpu
+                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, mtp_config=mtp_config
                 )
                 train_loss_meter.update(loss_val, 1)
                 train_acc_meter.update(acc_val, 1)
@@ -2221,4 +2239,5 @@ if __name__ == "__main__":
         tensorboard_dir="runs",  # TensorBoard 日志目录
         moe_config=moe_config,  # MoE 配置
         use_multi_gpu=True,  # DDP 多卡训练
+        mtp_config=mtp_config if use_mtp else None,  # MTP 配置
     )
