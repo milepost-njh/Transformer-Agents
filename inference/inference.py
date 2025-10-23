@@ -5,6 +5,7 @@ Transformer 推理脚本
 
 使用方法:
 CUDA_VISIBLE_DEVICES=5 python inference.py --mode normal --checkpoint checkpoints/latest.pt --input "Olá, como você está?"
+
 CUDA_VISIBLE_DEVICES=5 python inference.py --mode mla --checkpoint checkpoints/latest.pt --input "Olá, como você estä
 CUDA_VISIBLE_DEVICES=5 python inference.py --mode mtp --checkpoint checkpoints/latest.pt --input "Olá, como você está?"
 CUDA_VISIBLE_DEVICES=5 python inference.py --mode all --checkpoint checkpoints/latest.pt --input "Olá, como você estä
@@ -25,7 +26,10 @@ import json
 from datetime import datetime
 
 # 添加项目根目录到路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
 
 # 导入必要的模块
 from transformers import PreTrainedTokenizerFast
@@ -72,6 +76,7 @@ class InferenceConfig:
         mtp_config: Optional[DeepSeekMTPConfig] = None,
         tokenizer_pt_path: str = "tok_pt",
         tokenizer_en_path: str = "tok_en",
+        decode_method: str = "greedy",
     ):
         self.mode = mode
         self.checkpoint_path = checkpoint_path
@@ -101,6 +106,7 @@ class InferenceConfig:
         self.mtp_config = mtp_config
         self.tokenizer_pt_path = tokenizer_pt_path
         self.tokenizer_en_path = tokenizer_en_path
+        self.decode_method = decode_method
 
 
 class ModelLoader:
