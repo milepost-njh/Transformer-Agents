@@ -4,11 +4,13 @@ Transformer 推理脚本
 支持普通推理模式、MLA推理模式、MTP推理模式
 
 使用方法:
-CUDA_VISIBLE_DEVICES=5 python inference.py --mode normal --checkpoint checkpoints/latest.pt --input "Olá, como você está?"
+CUDA_VISIBLE_DEVICES=5 python inference/inference.py --mode normal --checkpoint checkpoints/latest.pt --input "O Tom está procurando uma segunda opinião."
 
-CUDA_VISIBLE_DEVICES=5 python inference.py --mode mla --checkpoint checkpoints/latest.pt --input "Olá, como você estä
-CUDA_VISIBLE_DEVICES=5 python inference.py --mode mtp --checkpoint checkpoints/latest.pt --input "Olá, como você está?"
-CUDA_VISIBLE_DEVICES=5 python inference.py --mode all --checkpoint checkpoints/latest.pt --input "Olá, como você estä
+CUDA_VISIBLE_DEVICES=5 python inference/inference.py --mode mla --checkpoint checkpoints/latest.pt --input "O Tom está procurando uma segunda opinião."
+CUDA_VISIBLE_DEVICES=5 python inference/inference.py --mode mtp --checkpoint checkpoints/latest.pt --input "O Tom está procurando uma segunda opinião."
+
+CUDA_VISIBLE_DEVICES=5 python inference/inference.py --mode all --checkpoint checkpoints/latest.pt --input "O Tom está procurando uma segunda opinião."
+
 """
 
 import os
@@ -716,11 +718,14 @@ def main():
     )
     
     # 根据模式设置配置
+    # 注意：训练时使用了 MoE，所以推理时也必须启用 MoE
+    config.use_moe = True  # 训练时启用了 MoE，推理时必须匹配
+    config.moe_config = create_moe_config(config)
+    
     if args.mode in ["mla", "all"]:
         config.use_mla = True
     if args.mode in ["mtp", "all"]:
         config.use_mtp = True
-        config.moe_config = create_moe_config(config)
         config.mtp_config = create_mtp_config(config)
     if args.mode == "normal":
         config.use_mla = False
