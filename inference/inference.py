@@ -74,8 +74,8 @@ class InferenceConfig:
         use_mtp: bool = False,
         moe_config: Optional[MoEConfig] = None,
         mtp_config: Optional[DeepSeekMTPConfig] = None,
-        tokenizer_pt_path: str = "tok_pt",
-        tokenizer_en_path: str = "tok_en",
+        tokenizer_pt_path: str = None,
+        tokenizer_en_path: str = None,
         decode_method: str = "greedy",
     ):
         self.mode = mode
@@ -104,8 +104,32 @@ class InferenceConfig:
         self.use_mtp = use_mtp
         self.moe_config = moe_config
         self.mtp_config = mtp_config
-        self.tokenizer_pt_path = tokenizer_pt_path
-        self.tokenizer_en_path = tokenizer_en_path
+        
+        # 自动检测tokenizer路径
+        if tokenizer_pt_path is None:
+            # 尝试多个可能的路径
+            possible_paths = ["tok_pt", "../tok_pt", "../../tok_pt"]
+            for path in possible_paths:
+                if os.path.exists(os.path.join(path, "tokenizer.json")):
+                    self.tokenizer_pt_path = path
+                    break
+            if self.tokenizer_pt_path is None:
+                self.tokenizer_pt_path = "tok_pt"  # 默认路径
+        else:
+            self.tokenizer_pt_path = tokenizer_pt_path
+            
+        if tokenizer_en_path is None:
+            # 尝试多个可能的路径
+            possible_paths = ["tok_en", "../tok_en", "../../tok_en"]
+            for path in possible_paths:
+                if os.path.exists(os.path.join(path, "tokenizer.json")):
+                    self.tokenizer_en_path = path
+                    break
+            if self.tokenizer_en_path is None:
+                self.tokenizer_en_path = "tok_en"  # 默认路径
+        else:
+            self.tokenizer_en_path = tokenizer_en_path
+            
         self.decode_method = decode_method
 
 
