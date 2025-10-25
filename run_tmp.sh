@@ -24,7 +24,7 @@ LOG_FILE=logs/train_ddp_mtp.log
 (
   set -x
   torchrun --standalone --nproc_per_node="${NPROC}" \
-    train_tmp.py
+    train_tmp.py "$@"
 ) >"${LOG_FILE}" 2>&1 &
 
 PID=$!
