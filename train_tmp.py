@@ -1983,7 +1983,10 @@ if __name__ == "__main__":
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
     
     # 根据是否使用MLA设置不同的checkpoint目录
-    checkpoint_dir = './checkpoints'
+    if use_mla:
+        checkpoint_dir = 'checkpoints'
+    else:
+        checkpoint_dir = 'checkpoints_no_mla'
     logger.info(f"   - Checkpoint目录: {checkpoint_dir}")
 
     # 构建词表参数
