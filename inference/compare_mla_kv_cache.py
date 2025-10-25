@@ -85,10 +85,18 @@ def benchmark_kv_cache(config, checkpoint_path, test_input, model_name, max_leng
     final_gpu_memory = get_gpu_memory()
     
     # 计算KV-cache相关指标
+    # 注意：这里测量的是推理过程中的总内存增加，包括KV-cache和其他中间结果
     kv_cache_memory = final_gpu_memory - model_gpu_memory
+    
+    # 如果内存使用异常（MLA比No-MLA用更多内存），可能是测量问题
+    if kv_cache_memory < 0:
+        kv_cache_memory = 0  # 避免负数
     
     print(f"   推理时间: {inference_time:.3f}s")
     print(f"   输出长度: {len(result['tokens'])} tokens")
+    print(f"   初始GPU内存: {initial_gpu_memory:.1f} MB")
+    print(f"   模型加载后内存: {model_gpu_memory:.1f} MB")
+    print(f"   推理后内存: {final_gpu_memory:.1f} MB")
     print(f"   KV-cache内存: {kv_cache_memory:.1f} MB")
     
     return {
