@@ -1981,7 +1981,10 @@ if __name__ == "__main__":
     train_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_train.csv"
     val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
-    checkpoint_dir = './checkpoints'
+    
+    # 根据是否使用MLA设置不同的checkpoint目录
+    checkpoint_dir = "checkpoints_no_mla" if not use_mla else "checkpoints"
+    logger.info(f"   - Checkpoint目录: {checkpoint_dir}")
 
     # 构建词表参数
     vocab_size = 2 ** 13  # 词表大小
@@ -2255,7 +2258,7 @@ if __name__ == "__main__":
         scheduler=scheduler,  # Noam 调度
         device=_device if torch.cuda.is_available() else device,
         log_every=100,
-        ckpt_dir="checkpoints",
+        ckpt_dir=checkpoint_dir,  # 使用动态的checkpoint目录
         ckpt_prefix="transformer",
         tensorboard_dir="runs",  # TensorBoard 日志目录
         moe_config=moe_config,  # MoE 配置

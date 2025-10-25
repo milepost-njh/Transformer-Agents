@@ -3,7 +3,6 @@
 set -euo pipefail
 
 mkdir -p logs
-rm -rf checkpoints
 
 # 推断使用的 GPU 数量（优先 CUDA_VISIBLE_DEVICES，否则用 nvidia-smi）
 if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
