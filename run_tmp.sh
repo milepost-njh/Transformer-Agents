@@ -20,7 +20,7 @@ export NCCL_DEBUG=${NCCL_DEBUG:-WARN}
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
 
 # 后台运行，日志写入文件
-LOG_FILE=logs/train_ddp_mtp.log
+LOG_FILE=logs/train_ddp_$(date +%Y%m%d_%H%M%S).log
 (
   set -x
   torchrun --standalone --nproc_per_node="${NPROC}" \

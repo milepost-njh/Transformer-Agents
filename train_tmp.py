@@ -1983,7 +1983,7 @@ if __name__ == "__main__":
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
     
     # 根据是否使用MLA设置不同的checkpoint目录
-    checkpoint_dir = "checkpoints_no_mla" if not use_mla else "checkpoints"
+    checkpoint_dir = './checkpoints'
     logger.info(f"   - Checkpoint目录: {checkpoint_dir}")
 
     # 构建词表参数
@@ -2246,8 +2246,7 @@ if __name__ == "__main__":
     logger.info(f"✅ 开始训练: lr={learning_rate}, epochs={epochs}, batch_size={batch_size}")
     
     
-    if not os.path.exists(checkpoint_dir):
-        os.mkdir(checkpoint_dir)
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
     train_model(
         epochs=epochs,
