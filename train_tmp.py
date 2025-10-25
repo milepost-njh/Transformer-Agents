@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import math
+import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -1958,6 +1959,22 @@ def load_ckpt(model, optimizer=None, scheduler=None, ckpt_dir="checkpoints", dev
 
 
 if __name__ == "__main__":
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="Transformer Training Script")
+    parser.add_argument("--no_mla", action="store_true", 
+                       help="Disable MLA (default: MLA enabled)")
+    
+    args = parser.parse_args()
+    
+    # 处理参数逻辑
+    use_mla = not args.no_mla  # 默认启用MLA，除非指定--no_mla
+    use_mtp = True  # MTP固定启用
+    
+    logger.info(f"🚀 Training Configuration:")
+    logger.info(f"   - MLA (Multi-head Latent Attention): {use_mla}")
+    logger.info(f"   - MTP (Multi-Token Prediction): {use_mtp}")
+    logger.info(f"   - MoE: True (fixed)")
+
     # 0. 常量定义
 
     # 数据文件地址
@@ -2034,7 +2051,7 @@ if __name__ == "__main__":
     test_tokenizers(en_tokenizer=en_tokenizer, pt_tokenizer=pt_tokenizer)
 
     # MLA 配置
-    use_mla = True  # 是否使用 MLA
+    # use_mla 已在命令行参数中定义
     q_lora_rank = d_model // 2  # Q 的低秩维度，默认为 d_model 的一半
     kv_lora_rank = d_model // 4  # KV 的低秩维度，默认为 d_model 的 1/4
 
@@ -2077,7 +2094,7 @@ if __name__ == "__main__":
     logger.info("✅ 标准 Transformer 模型初始化完成")
     
     # MTP 集成（可选）
-    use_mtp = True  # 是否启用 MTP (Multi-Token Prediction)
+    # use_mtp 已在命令行参数中定义
     
     if use_mtp:
         from core.models.deepseek_mtp import DeepSeekMTPConfig, add_mtp_to_transformer
