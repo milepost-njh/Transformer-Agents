@@ -1975,7 +1975,7 @@ if __name__ == "__main__":
     # 模型训练超参数
     batch_size = 32  # 批处理数 (降低batch size避免OOM)
     warmup_steps = 4000  # warmup steps数
-    epochs = 15  # 训练轮数
+    epochs = 30  # 训练轮数
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
