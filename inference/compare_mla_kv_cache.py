@@ -116,7 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description="MLA vs 标准注意力KV-cache效率对比")
     parser.add_argument("--mla_checkpoint", type=str, default="checkpoints/latest.pt",
                        help="MLA模型checkpoint路径")
-    parser.add_argument("--no_mla_checkpoint", type=str, default="checkpoints/latest.pt",
+    parser.add_argument("--no_mla_checkpoint", type=str, default="checkpoints_no_mla/latest.pt",
                        help="非MLA模型checkpoint路径")
     parser.add_argument("--max_length", type=int, default=512,
                        help="最大序列长度")
