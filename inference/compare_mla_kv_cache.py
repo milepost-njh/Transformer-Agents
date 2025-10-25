@@ -19,7 +19,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
-from inference.inference import InferenceEngine, InferenceConfig
+from inference import InferenceEngine, InferenceConfig
 
 def get_gpu_memory():
     """获取GPU内存使用量 (MB)"""
@@ -45,6 +45,14 @@ def create_long_test_input(base_text, target_length=200):
         extended_text += " " + base_text
     
     return " ".join(extended_text.split()[:target_length])
+
+def create_short_test_input(base_text, max_tokens=50):
+    """创建短序列测试输入，确保不超过模型最大长度"""
+    words = base_text.split()
+    if len(words) <= max_tokens:
+        return " ".join(words)
+    else:
+        return " ".join(words[:max_tokens])
 
 def benchmark_kv_cache(config, checkpoint_path, test_input, model_name, max_length=512):
     """专门测试KV-cache的基准测试"""
@@ -139,12 +147,17 @@ def main():
     print(f"   2. 都用相同epoch：--mla_checkpoint mid_e8_s*.pt --no_mla_checkpoint mid_e8_s*.pt")
     print(f"   3. 训练两个模型到相同程度后再对比")
     
-    # 创建长序列测试输入
+    # 创建测试输入
     base_text = "O Tom está procurando uma segunda opinião sobre o tratamento médico que recebeu. Ele quer entender melhor as opções disponíveis e os possíveis efeitos colaterais. A tecnologia médica está evoluindo rapidamente, oferecendo novas possibilidades de diagnóstico e tratamento. O aprendizado de máquina e a inteligência artificial estão revolucionando a área da saúde, permitindo análises mais precisas e personalizadas. O futuro da medicina parece promissor, com avanços em terapia genética, medicina regenerativa e telemedicina."
     
-    long_test_input = create_long_test_input(base_text, 150)
-    print(f"\n📝 测试输入长度: {len(long_test_input.split())} words")
-    print(f"   输入预览: {long_test_input[:100]}...")
+    # 根据测试长度创建合适的输入
+    if max(args.test_lengths) <= 128:
+        test_input = create_short_test_input(base_text, max_tokens=30)  # 短输入
+    else:
+        test_input = create_long_test_input(base_text, 100)  # 长输入
+    
+    print(f"\n📝 测试输入长度: {len(test_input.split())} words")
+    print(f"   输入预览: {test_input[:100]}...")
     
     all_results = []
     
@@ -159,7 +172,7 @@ def main():
             device="cuda" if torch.cuda.is_available() else "cpu"
         )
         
-        mla_result = benchmark_kv_cache(mla_config, args.mla_checkpoint, long_test_input, "MLA", max_length)
+        mla_result = benchmark_kv_cache(mla_config, args.mla_checkpoint, test_input, "MLA", max_length)
         all_results.append(mla_result)
         
         # 清理内存
@@ -173,7 +186,7 @@ def main():
             device="cuda" if torch.cuda.is_available() else "cpu"
         )
         
-        no_mla_result = benchmark_kv_cache(no_mla_config, no_mla_checkpoint, long_test_input, "No-MLA", max_length)
+        no_mla_result = benchmark_kv_cache(no_mla_config, no_mla_checkpoint, test_input, "No-MLA", max_length)
         all_results.append(no_mla_result)
         
         # 当前长度对比
