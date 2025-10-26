@@ -85,21 +85,21 @@ L × (d_kv_compressed + d_rope + H × v_head_dim)
 L × H × d_h × 2 = 80 × 64 × 128 × 2 = 1,310,720 个参数
 ```
 
-### 1.2.3 单token的KV-Cache参数个数和显存占用
+### 1.2.3 单token的KV-Cache数据元素个数和显存占用
 
-**KV-Cache参数个数** (MHA 示例):
+**KV-Cache数据元素个数** (MHA 示例):
 
 对于 Qwen-72B：
 $$
-num_{kv} = 2 \times L \times n_h = 2 \times 80 \times 64 = 10,240 \text{ 个参数}
+num_{kv} = 2 \times L \times n_h = 2 \times 80 \times 64 = 10,240 \text{ 个数据元素}
 $$
 
 其中：
 - \(2\) 表示 K 和 V 两个矩阵
 - \(L\) 是 Transformer 层数
-- \(n_h\) 是每层内的参数维度 (= H × d_h)
+- \(n_h\) 是每层内的维度 (= H × d_h)
 
-**单token显存占用** (bf16精度，2 bytes/参数):
+**单token显存占用** (bf16精度，2 bytes/数据元素):
 
 $$
 1token\_mem_{kv} = 2 \times num_{kv} \times d_h = 2 \times 10,240 \times 128 \text{ bytes} = 2.62 \text{ MB}
@@ -107,32 +107,32 @@ $$
 
 **你的模型 (MHA)**:
 ```
-单token参数: L × H × d_h × 2 = 8 × 8 × 64 × 2 = 8,192 个参数
-单token显存: 8,192 × 2 bytes = 16 KB
+数据元素个数: L × H × d_h × 2 = 8 × 8 × 64 × 2 = 8,192 个数据元素
+显存占用:    8,192 × 2 bytes = 16 KB
 ```
 
 **你的模型 (MQA)**:
 ```
-单token参数: L × d_h × 2 = 8 × 64 × 2 = 1,024 个参数
-单token显存: 1,024 × 2 bytes = 2 KB
+数据元素个数: L × d_h × 2 = 8 × 64 × 2 = 1,024 个数据元素
+显存占用:    1,024 × 2 bytes = 2 KB
 ```
 
 **你的模型 (MLA)**:
 ```
-单token参数: L × (128 + 32 + 512) = 8 × 672 = 5,376 个参数
-单token显存: 5,376 × 2 bytes = 10.8 KB
+数据元素个数: L × (128 + 32 + 512) = 8 × 672 = 5,376 个数据元素
+显存占用:    5,376 × 2 bytes = 10.8 KB
 ```
 
 **Qwen-72B (MHA)**:
 ```
-单token参数: L × H × d_h × 2 = 80 × 64 × 128 × 2 = 1,310,720 个参数
-单token显存: 1,310,720 × 2 bytes = 2.62 MB
+数据元素个数: L × H × d_h × 2 = 80 × 64 × 128 × 2 = 1,310,720 个数据元素
+显存占用:    1,310,720 × 2 bytes = 2.62 MB
 ```
 
 ## 1.3 对比表格
 
-| 模型 | 注意力类型 | L | H | d_h | 单token参数 | 单token显存 |
-|------|-----------|---|---|-----|-----------|-----------|
+| 模型 | 注意力类型 | L | H | d_h | 单token数据元素 | 单token显存 |
+|------|-----------|---|---|-----|---------------|-----------|
 | Qwen-72B | MHA | 80 | 64 | 128 | 1,310,720 | 2.62 MB |
 | 你的模型 | MHA | 8 | 8 | 64 | 8,192 | 16 KB |
 | 你的模型 | MQA | 8 | 1 | 64 | 1,024 | 2 KB |
@@ -143,7 +143,7 @@ $$
 对于 Batch 大小为 1：
 
 $$
-Total\text{-}KV\text{-}Cache = S \times (\text{单token参数} \times 2\text{ bytes})
+Total\text{-}KV\text{-}Cache = S \times (\text{单token数据元素} \times 2\text{ bytes})
 $$
 
 **你的模型 (S=64)**:
