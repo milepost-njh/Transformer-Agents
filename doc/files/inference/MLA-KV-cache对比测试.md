@@ -75,24 +75,33 @@
 python train_tmp.py --no_mla
 
 # 然后对比两个最新模型
-python inference/compare_mla_kv_cache.py \
+python inference/compare_mla_kv_cache_real.py \
     --mla_checkpoint checkpoints/latest.pt \
-    --no_mla_checkpoint checkpoints/latest.pt \
-    --test_lengths 128 256 512
+    --no_mla_checkpoint checkpoints_no_mla/latest.pt \
+    --test_lengths 16 32 48 64
 ```
 
 **方案2：都用相同epoch模型**
 ```bash
-# 使用相同训练程度的模型
-python inference/compare_mla_kv_cache.py \
-    --mla_checkpoint checkpoints/mid_e1_s*.pt \
-    --no_mla_checkpoint checkpoints/mid_e1_s*.pt \
-    --test_lengths 128 256 512
+# 使用相同训练程度的模型（以epoch 1为例）
+python inference/compare_mla_kv_cache_real.py \
+    --mla_checkpoint checkpoints/mid_e1_s222.pt \
+    --no_mla_checkpoint checkpoints_no_mla/mid_e1_s222.pt \
+    --test_lengths 16 32 48 64
 ```
+
+### 关键参数说明
+
+**为什么使用 --test_lengths 16 32 48 64？**
+
+- ✅ 模型最大序列长度为64（train_tmp.py中定义）
+- ✅ 所有测试长度都必须 ≤ 64，否则会抛出 ValueError
+- ✅ 这些长度让我们能观察KV-cache随序列增长的变化趋势
+- ❌ 不能使用 128, 256, 512 等长度，会超过模型限制
 
 ### 为什么需要相同训练程度？
 
-- ❌ **错误对比**：Epoch 22 vs Epoch 8 - 训练程度不同，结果不可信
+- ❌ **错误对比**：Epoch 22 vs Epoch 1 - 训练程度不同，结果不可信
 - ✅ **正确对比**：相同epoch或都训练到最新 - 公平对比MLA技术优势
 
 ## 预期结果

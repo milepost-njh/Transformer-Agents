@@ -689,8 +689,8 @@ class DeepseekV3Attention(nn.Module):
         self.max_position_embeddings = config.max_position_embeddings
         self.rope_theta = config.rope_theta
         self.q_lora_rank = config.q_lora_rank
-        self.qk_rope_head_dim = config.qk_rope_head_dim
-        self.kv_lora_rank = config.kv_lora_rank
+        self.qk_rope_head_dim = config.qk_rope_head_dim  # TODO: 论文公式(43)体现在configuration_deepseek.py第128行: qk_rope_head_dim=v_head_dim/2=64
+        self.kv_lora_rank = config.kv_lora_rank  # TODO: 论文公式(41)体现在configuration_deepseek.py第126行: kv_lora_rank=4×v_head_dim=512
         self.v_head_dim = config.v_head_dim
         self.qk_nope_head_dim = config.qk_nope_head_dim
         self.q_head_dim = config.qk_nope_head_dim + config.qk_rope_head_dim
