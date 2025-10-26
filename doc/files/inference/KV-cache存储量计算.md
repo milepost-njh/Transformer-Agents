@@ -1,5 +1,7 @@
 # 1. KV Cache 存储量计算
 
+参考文献：https://zhuanlan.zhihu.com/p/16730036197
+
 ## 1.1 模型配置对比
 
 ### 1.1.1 你的模型配置
@@ -143,108 +145,34 @@ mem_kv = 4.5KB × 1 × 64 = 288KB
 
 ## 1.6 MLA-KV-cache推理报告
 
-### 1.6.1 实验日志（64 tokens生成）
+### 1.6.1 实验结果（64 tokens）
 
-#### 实验命令
-
+**测试命令**:
 ```shell
-# 根目录下执行
 CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
     --mla_checkpoint checkpoints/mid_e1_s222.pt \
     --no_mla_checkpoint checkpoints_no_mla/mid_e1_s222.pt \
-    --test_lengths  64
+    --test_lengths 64
 ```
 
-#### MLA 模型
+**对比结果**:
+| 指标 | MLA | Standard | 差异 |
+|------|-----|----------|------|
+| KV-cache显存 | 0.66 MB | 1.00 MB | 节省 34.0% |
+| 推理时间 | 2.667s | 2.344s | 慢 13.8% |
+| 总GPU显存 | 1657 MB | 1689 MB | -32 MB |
+
+**结论**: ✅ MLA节省 34.0% KV-cache显存，但推理慢 13.8%
+
+### 1.6.2 理论验证
+
+**模型配置**: 8层, 8头, head_dim=64, d_model=512, bf16精度
+
+**KV-cache计算**:
 ```
-模型加载完成，GPU显存: 1657.1 MB
-生成token数: 64
-总时间: 2.667s
-平均每步时间: 41.61ms
-最大KV-cache显存: 0.66 MB (bf16精度)
-```
-
-#### 标准注意力模型
-```
-模型加载完成，GPU显存: 1688.7 MB
-生成token数: 64
-总时间: 2.344s
-平均每步时间: 36.57ms
-最大KV-cache显存: 1.00 MB (bf16精度)
-```
-
-#### 对比结果
-```
-⏱️  生成时间:
-  MLA: 2.667s
-  Standard: 2.344s
-  差异: -0.323s (-13.8%)
-
-⚡ 平均每步时间:
-  MLA: 41.61ms
-  Standard: 36.57ms
-  差异: -5.04ms (-13.8%)
-
-💾 KV-cache显存 (bf16):
-  MLA: 0.66 MB
-  Standard: 1.00 MB
-  节省: 0.34 MB (34.0%)
-
-🖥️  总GPU显存:
-  MLA: 1657.1 MB
-  Standard: 1688.7 MB
-  差异: +31.6 MB
-
-💡 结论:
-  ✅ MLA成功压缩KV-cache，节省 34.0% 显存
-  ⚠️  MLA推理速度略慢 13.8%（额外投影计算开销）
-```
-
-### 1.6.2 实验验证与分析
-
-#### 实验配置
-- **测试日期**: 2025-10-26
-- **模型配置**: 8层, 8头, head_dim=64, d_model=512
-- **序列长度**: 64 tokens
-- **精度**: bf16 (2 bytes/参数)
-- **测试脚本**: `inference/compare_kv_cache_mla.py`
-
-#### 理论计算验证
-
-**标准注意力 (MHA) 的 KV-cache:**
-```
-单token参数量 = 2 × num_heads × head_dim × num_layers
-              = 2 × 8 × 64 × 8
-              = 8,192 参数
-
-64 tokens显存 = 8,192 × 64 × 2 bytes
-              = 1,048,576 bytes
-              = 1.00 MB ✅ (与实验结果完全一致)
-```
-
-**MLA 的 KV-cache:**
-```
-K压缩表示 = kv_lora_rank + qk_rope_head_dim
-          = (d_model // 4) + (head_dim // 2)
-          = 128 + 32 = 160 参数/层
-
-V表示 = num_heads × v_head_dim
-      = 8 × 64 = 512 参数/层
-
-单token参数量 = (160 + 512) × num_layers
-              = 672 × 8
-              = 5,376 参数
-
-64 tokens显存 = 5,376 × 64 × 2 bytes
-              = 688,128 bytes
-              = 0.66 MB ✅ (与实验结果完全一致)
-```
-
-**压缩比验证:**
-```
-压缩比 = (1.00 - 0.66) / 1.00
-       = 0.34 / 1.00
-       = 34.0% ✅ (与实验结果完全一致)
+Standard: 2 × 8头 × 64 × 8层 × 64tokens × 2bytes = 1.00 MB
+MLA:      (128 + 32 + 512) × 8层 × 64tokens × 2bytes = 0.66 MB
+压缩比:   34.0% ✅
 ```
 
 #### 关键发现

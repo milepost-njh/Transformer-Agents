@@ -1,173 +1,132 @@
-# KV-cache实现指南
+# KV-cache 实现说明
 
-> **文档类型**：实现指南  
-> **难度级别**：高级  
-> **适用对象**：深度学习研究者、Transformer架构开发者
+> **类型**: 技术说明 | **难度**: 高级
 
 ## 概述
 
-要真正测试MLA的KV-cache优势，需要实现真正的KV-cache机制。本文档提供了具体的实现方案。
+KV-cache 是推理优化的核心技术。本文档说明当前项目的实现方式。
 
-## 实现步骤
+## 当前实现
 
-### 1. 实现KV-cache类
+### 核心思想
+
+在自回归生成中，每个新 token 的注意力计算只需要当前 token 的 Q，但需要所有历史 token 的 K/V。通过缓存 K/V，可以避免重复计算。
+
+**标准注意力**:
+- 每 step 缓存完整的 K/V：`[B, H, seq_len, head_dim]`
+- 存储大小：`2 × H × head_dim × seq_len × num_layers`
+
+**MLA 优化**:
+- 缓存压缩的 K/V：`[B, H, seq_len, compressed_dim]`  
+- 存储大小：`(kv_lora_rank + qk_rope_head_dim + v_head_dim) × seq_len × num_layers`
+- 压缩比：34.0%（64 token 场景）
+
+### 代码实现
+
+**MultiHeadAttention forward 方法**（`train_tmp.py` 759-916行）:
 
 ```python
-class KVCache:
-    """KV-cache实现类"""
+def forward(self, q, k, v, mask=None, return_attn=True, 
+            past_key_value=None, use_cache=False):
+    """
+    支持 KV-cache 的前向传播
     
-    def __init__(self, max_length: int, num_layers: int, num_heads: int, head_dim: int, 
-                 use_mla: bool = False, kv_lora_rank: int = None):
-        self.max_length = max_length
-        self.num_layers = num_layers
-        self.num_heads = num_heads
-        self.head_dim = head_dim
-        self.use_mla = use_mla
-        self.kv_lora_rank = kv_lora_rank or head_dim // 4
-        
-        # 初始化缓存
-        self.cache = {}
-        self.current_length = 0
-        
-    def get_cache_size_mb(self) -> float:
-        """计算当前KV-cache的内存使用量（MB）"""
-        total_size = 0
-        for layer_idx in range(self.num_layers):
-            if layer_idx in self.cache:
-                for key in ['key', 'value']:
-                    if key in self.cache[layer_idx]:
-                        tensor = self.cache[layer_idx][key]
-                        total_size += tensor.numel() * tensor.element_size()
-        return total_size / 1024 / 1024
+    Args:
+        past_key_value: 缓存的 (past_k, past_v) 元组
+        use_cache: 是否返回当前的 KV-cache
+    """
+    # ... 注意力计算 ...
     
-    def update_cache(self, layer_idx: int, key: torch.Tensor, value: torch.Tensor):
-        """更新指定层的KV-cache"""
-        if layer_idx not in self.cache:
-            self.cache[layer_idx] = {}
-        
-        # 如果是第一次，直接存储
-        if 'key' not in self.cache[layer_idx]:
-            self.cache[layer_idx]['key'] = key
-            self.cache[layer_idx]['value'] = value
-        else:
-            # 拼接新的KV到现有缓存
-            self.cache[layer_idx]['key'] = torch.cat([
-                self.cache[layer_idx]['key'], key
-            ], dim=2)  # 在序列维度拼接
-            
-            self.cache[layer_idx]['value'] = torch.cat([
-                self.cache[layer_idx]['value'], value
-            ], dim=2)
-        
-        self.current_length += 1
+    # KV-cache 处理
+    if past_key_value is not None:
+        past_k, past_v = past_key_value
+        key_states = torch.cat([past_k, key_states], dim=2)  # 拼接历史 K
+        v_states = torch.cat([past_v, v_states], dim=2)      # 拼接历史 V
+    
+    # 返回当前 KV 用于下一步
+    present_key_value = (key_states, v_states) if use_cache else None
+    
+    # 返回值
+    if use_cache:
+        if return_attn:
+            return output, attn_weights, present_key_value
+        return output, present_key_value
+    else:
+        if return_attn:
+            return output, attn_weights
+        return output
 ```
 
-### 2. 修改MultiHeadAttention
-
-需要修改`MultiHeadAttention`的`forward`方法，添加KV-cache支持：
+### 自回归生成流程
 
 ```python
-def forward(self, q, k, v, mask=None, return_attn: bool = True, kv_cache=None, layer_idx: int = 0):
-    """
-    支持KV-cache的前向传播
-    """
-    # ... 现有的注意力计算逻辑 ...
+def generate_with_kv_cache(self, input_text: str, max_new_tokens: int = 64):
+    """自回归生成，使用 KV-cache"""
     
-    # 更新KV-cache
-    if kv_cache is not None:
-        if self.use_mla:
-            # MLA模式：缓存压缩的KV
-            kv_cache.update_cache(layer_idx, compressed_kv, k_pe)
-        else:
-            # 标准模式：缓存完整的KV
-            kv_cache.update_cache(layer_idx, k, v)
-    
-    return output, attn_weights
-```
-
-### 3. 实现自回归生成
-
-```python
-def autoregressive_generate(self, input_text: str, max_new_tokens: int = 64) -> Dict:
-    """自回归生成，使用KV-cache"""
-    # 编码输入
-    encoder_input = self.engine.encode_input(input_text)
-    
-    # 初始化decoder输入
-    start_id = self.engine.loader.en_tokenizer.bos_token_id
-    end_id = self.engine.loader.en_tokenizer.eos_token_id
-    decoder_input = torch.tensor([[start_id]], dtype=torch.long, device=self.config.device)
-    
-    generated_tokens = []
+    kv_cache = None  # 初始化缓存
+    step_times = []
     kv_cache_sizes = []
     
     with torch.no_grad():
         for step in range(max_new_tokens):
-            # 记录KV-cache大小
-            kv_cache_size = self.kv_cache.get_cache_size_mb()
-            kv_cache_sizes.append(kv_cache_size)
+            start = time.time()
             
-            # 前向传播（传入KV-cache）
-            model_output = self.engine.loader.model(
-                encoder_input, decoder_input,
-                src_mask=enc_pad_mask,
-                tgt_mask=dec_mask,
-                enc_dec_mask=enc_dec_mask,
-                kv_cache=self.kv_cache  # 传入KV-cache
+            # 前向传播（传入历史 KV-cache）
+            output, kv_cache = self.model(
+                query, key, value,
+                past_key_value=kv_cache,
+                use_cache=True
             )
             
-            # 处理输出和生成下一个token
-            # ...
+            # 记录 KV-cache 大小
+            kv_size = self._calculate_cache_size(kv_cache)
+            kv_cache_sizes.append(kv_size)
+            step_times.append(time.time() - start)
     
     return {
         'kv_cache_sizes': kv_cache_sizes,
         'max_kv_cache_size': max(kv_cache_sizes),
-        # ... 其他结果
+        'step_times': step_times
     }
 ```
 
-### 4. 测试脚本
+## 显存效率
 
-使用`compare_mla_kv_cache_real.py`进行测试：
+**64 token 生成对比** (bf16 精度):
 
+| 模型 | KV-cache | 推理时间 | 每步时间 |
+|------|----------|---------|---------|
+| 标准注意力 | 1.00 MB | 2.344s | 36.57ms |
+| MLA | 0.66 MB | 2.667s | 41.61ms |
+| **节省** | **34.0%** | **-13.8%** | **-13.8%** |
+
+**长序列优势**: 序列越长，MLA 的显存节省相对于速度损失的收益越明显。
+
+## 关键实现细节
+
+1. **past_key_value 格式**: 使用元组 `(past_k, past_v)` 存储缓存
+2. **序列维度拼接**: `dim=2` 对应序列长度维度
+3. **显存计算**: 使用 bf16（2 bytes/参数）统一计算
+4. **梯度处理**: 推理时使用 `torch.no_grad()` 避免计算梯度
+
+## 测试脚本
+
+运行 KV-cache 对比测试:
 ```bash
-python inference/compare_mla_kv_cache_real.py \
-    --mla_checkpoint checkpoints/latest.pt \
-    --no_mla_checkpoint checkpoints_no_mla/latest.pt \
-    --test_lengths 32 64 128 256
+CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
+    --mla_checkpoint checkpoints/mid_e1_s222.pt \
+    --no_mla_checkpoint checkpoints_no_mla/mid_e1_s222.pt \
+    --test_lengths 64
 ```
 
-## 预期结果
-
-实现真正的KV-cache后，应该看到：
-
-1. **内存节省**：MLA在长序列中显著减少KV-cache内存
-2. **序列越长效果越明显**：压缩比例随序列长度增加
-3. **推理速度提升**：减少内存访问，提高缓存命中率
-
-## 关键差异
-
-### 标准注意力KV-cache
-```python
-# 每个token存储: [B, H, seq_len, d_model]
-kv_cache[key] = current_k    # 完整维度
-kv_cache[value] = current_v  # 完整维度
+输出示例:
+```
+💾 KV-cache: 0.66 MB (MLA) vs 1.00 MB (Standard) | 节省 34.0%
+⏱️  推理时间: 2.667s (MLA) vs 2.344s (Standard) | 慢 13.8%
 ```
 
-### MLA KV-cache
-```python
-# 每个token存储: [B, H, seq_len, compressed_dim]
-kv_cache[compressed_kv] = compressed_kv  # 压缩维度
-kv_cache[k_pe] = k_pe                   # 位置编码部分
-```
+## 相关文档
 
-## 实现难点
-
-1. **模型修改**：需要修改现有的MultiHeadAttention类
-2. **缓存管理**：需要正确管理多层KV-cache
-3. **内存测量**：需要准确测量KV-cache的内存使用
-4. **序列拼接**：需要正确处理序列维度的拼接
-
-## 总结
-
-实现真正的KV-cache是测试MLA优势的关键。通过上述步骤，可以正确测试MLA在长序列自回归生成中的KV-cache压缩效果。
+- **详细对比报告**: `doc/files/inference/KV-cache存储量计算.md`
+- **精度说明**: `doc/files/inference/精度统一说明.md`
+- **代码位置**: `train_tmp.py`(759-916行) | `inference/compare_kv_cache_mla.py`
