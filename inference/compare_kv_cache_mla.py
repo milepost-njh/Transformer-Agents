@@ -5,10 +5,10 @@
 实现真正的KV-cache机制，测试自回归生成中的内存使用和性能
 
 使用方法:
-CUDA_VISIBLE_DEVICES=5 python inference/compare_kv_cache_mla.py \
-    --mla_checkpoint checkpoints/latest.pt \
-    --no_mla_checkpoint checkpoints_no_mla/latest.pt \
-    --test_lengths 32 64 128 256
+CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
+    --mla_checkpoint checkpoints/mid_e1_s222.pt \
+    --no_mla_checkpoint checkpoints_no_mla/mid_e1_s222.pt \
+    --test_lengths  64
 """
 
 import os
@@ -385,19 +385,8 @@ def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str,
     
     final_gpu_memory = get_gpu_memory()
     
-    # 打印结果
-    logger.info(f"\n生成结果:")
-    logger.info(f"  输入: {result['input']}")
-    logger.info(f"  输出: {result['output']}")
-    logger.info(f"  生成token数: {result['num_tokens_generated']}")
-    logger.info(f"  总时间: {result['generation_time']:.3f}s")
-    logger.info(f"  平均每步时间: {result['avg_step_time']*1000:.2f}ms")
-    logger.info(f"\nGPU显存使用:")
-    logger.info(f"  初始GPU显存: {initial_gpu_memory:.1f} MB")
-    logger.info(f"  模型加载后: {model_gpu_memory:.1f} MB")
-    logger.info(f"  生成后: {final_gpu_memory:.1f} MB")
-    logger.info(f"  最大KV-cache显存: {result['max_kv_cache_size']:.2f} MB")
-    logger.info(f"  最终KV-cache显存: {result['final_kv_cache_size']:.2f} MB")
+    # 打印关键结果
+    logger.info(f"\n生成: {result['num_tokens_generated']} tokens | 时间: {result['generation_time']:.3f}s | KV-cache: {result['max_kv_cache_size']:.2f} MB")
     
     return {
         'model_name': model_name,
@@ -419,55 +408,20 @@ def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str,
 def compare_results(mla_result: Dict, standard_result: Dict):
     """比较两个模型的结果"""
     logger.info(f"\n{'='*60}")
-    logger.info("📊 对比分析")
+    logger.info("📊 MLA vs Standard 对比结果")
     logger.info(f"{'='*60}")
-    
-    # 生成时间对比
-    time_diff = standard_result['generation_time'] - mla_result['generation_time']
-    time_improvement = (time_diff / standard_result['generation_time'] * 100) if standard_result['generation_time'] > 0 else 0
-    
-    logger.info(f"\n⏱️  生成时间:")
-    logger.info(f"  MLA: {mla_result['generation_time']:.3f}s")
-    logger.info(f"  Standard: {standard_result['generation_time']:.3f}s")
-    logger.info(f"  差异: {time_diff:+.3f}s ({time_improvement:+.1f}%)")
-    
-    # 每步时间对比
-    step_time_diff = standard_result['avg_step_time'] - mla_result['avg_step_time']
-    step_time_improvement = (step_time_diff / standard_result['avg_step_time'] * 100) if standard_result['avg_step_time'] > 0 else 0
-    
-    logger.info(f"\n⚡ 平均每步时间:")
-    logger.info(f"  MLA: {mla_result['avg_step_time']*1000:.2f}ms")
-    logger.info(f"  Standard: {standard_result['avg_step_time']*1000:.2f}ms")
-    logger.info(f"  差异: {step_time_diff*1000:+.2f}ms ({step_time_improvement:+.1f}%)")
     
     # KV-cache显存对比
     kv_diff = standard_result['max_kv_cache_size'] - mla_result['max_kv_cache_size']
     kv_improvement = (kv_diff / standard_result['max_kv_cache_size'] * 100) if standard_result['max_kv_cache_size'] > 0 else 0
     
-    logger.info(f"\n💾 KV-cache显存:")
-    logger.info(f"  MLA: {mla_result['max_kv_cache_size']:.2f} MB")
-    logger.info(f"  Standard: {standard_result['max_kv_cache_size']:.2f} MB")
-    logger.info(f"  节省: {kv_diff:.2f} MB ({kv_improvement:.1f}%)")
+    # 速度对比
+    time_diff = standard_result['generation_time'] - mla_result['generation_time']
+    time_improvement = (time_diff / standard_result['generation_time'] * 100) if standard_result['generation_time'] > 0 else 0
     
-    # GPU显存对比
-    gpu_diff = standard_result['final_gpu_memory'] - mla_result['final_gpu_memory']
-    
-    logger.info(f"\n🖥️  总GPU显存:")
-    logger.info(f"  MLA: {mla_result['final_gpu_memory']:.1f} MB")
-    logger.info(f"  Standard: {standard_result['final_gpu_memory']:.1f} MB")
-    logger.info(f"  差异: {gpu_diff:+.1f} MB")
-    
-    # 结论
-    logger.info(f"\n💡 结论:")
-    if kv_improvement > 0:
-        logger.info(f"  ✅ MLA成功压缩KV-cache，节省 {kv_improvement:.1f}% 显存")
-    else:
-        logger.info(f"  ❌ MLA未能有效压缩KV-cache")
-    
-    if time_improvement > 0:
-        logger.info(f"  ✅ MLA加速推理，提升 {time_improvement:.1f}%")
-    else:
-        logger.info(f"  ⚠️  MLA推理速度略慢 {abs(time_improvement):.1f}%（可能由于额外的投影计算）")
+    logger.info(f"\n💾 KV-cache: {mla_result['max_kv_cache_size']:.2f} MB vs {standard_result['max_kv_cache_size']:.2f} MB | 节省 {kv_improvement:.1f}%")
+    logger.info(f"⏱️  推理时间: {mla_result['generation_time']:.3f}s vs {standard_result['generation_time']:.3f}s | 慢 {abs(time_improvement):.1f}%")
+    logger.info(f"\n✅ MLA节省 {kv_improvement:.1f}% KV-cache显存，但推理慢 {abs(time_improvement):.1f}%")
 
 
 def main():
@@ -502,19 +456,15 @@ def main():
         logger.error(f"❌ Standard checkpoint not found: {args.no_mla_checkpoint}")
         return
     
-    logger.info(f"\n🚀 MLA vs 标准注意力 KV-cache 效率对比")
+    logger.info(f"\n🚀 MLA vs Standard KV-cache 对比")
     logger.info(f"{'='*60}")
-    logger.info(f"MLA checkpoint: {args.mla_checkpoint}")
-    logger.info(f"Standard checkpoint: {args.no_mla_checkpoint}")
-    logger.info(f"测试输入: {args.test_input}")
-    logger.info(f"测试长度: {args.test_lengths}")
     
     all_results = []
     
     for max_new_tokens in args.test_lengths:
-        logger.info(f"\n\n{'#'*60}")
-        logger.info(f"# 生成长度: {max_new_tokens} tokens")
-        logger.info(f"{'#'*60}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"测试: {max_new_tokens} tokens")
+        logger.info(f"{'='*60}")
         
         # 测试MLA模型
         mla_result = benchmark_model(
@@ -552,7 +502,7 @@ def main():
         logger.info(f"\n✅ 结果已保存到: {args.output}")
     
     logger.info(f"\n{'='*60}")
-    logger.info("✅ KV-cache对比测试完成!")
+    logger.info("✅ 测试完成")
     logger.info(f"{'='*60}")
 
 

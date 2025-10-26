@@ -152,7 +152,7 @@ mem_kv = 4.5KB × 1 × 64 = 288KB
 CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
     --mla_checkpoint checkpoints/mid_e1_s222.pt \
     --no_mla_checkpoint checkpoints_no_mla/mid_e1_s222.pt \
-    --test_lengths 32 64
+    --test_lengths  64
 ```
 
 #### MLA 模型
