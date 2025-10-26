@@ -74,8 +74,8 @@
 # 先训练非MLA模型到最新
 python train_tmp.py --no_mla
 
-# 然后对比两个最新模型
-python inference/compare_mla_kv_cache_real.py \
+# 然后对比两个最新模型（使用显卡1）
+CUDA_VISIBLE_DEVICES=1 python inference/compare_mla_kv_cache_real.py \
     --mla_checkpoint checkpoints/latest.pt \
     --no_mla_checkpoint checkpoints_no_mla/latest.pt \
     --test_lengths 16 32 48 64
@@ -83,8 +83,8 @@ python inference/compare_mla_kv_cache_real.py \
 
 **方案2：都用相同epoch模型**
 ```bash
-# 使用相同训练程度的模型（以epoch 1为例）
-python inference/compare_mla_kv_cache_real.py \
+# 使用相同训练程度的模型（以epoch 1为例，使用显卡1）
+CUDA_VISIBLE_DEVICES=1 python inference/compare_mla_kv_cache_real.py \
     --mla_checkpoint checkpoints/mid_e1_s222.pt \
     --no_mla_checkpoint checkpoints_no_mla/mid_e1_s222.pt \
     --test_lengths 16 32 48 64
@@ -98,6 +98,11 @@ python inference/compare_mla_kv_cache_real.py \
 - ✅ 所有测试长度都必须 ≤ 64，否则会抛出 ValueError
 - ✅ 这些长度让我们能观察KV-cache随序列增长的变化趋势
 - ❌ 不能使用 128, 256, 512 等长度，会超过模型限制
+
+**CUDA_VISIBLE_DEVICES=1 的作用**
+
+- 指定使用编号为1的GPU
+- 如果你有多张GPU，可以改为其他编号（如0, 2等）
 
 ### 为什么需要相同训练程度？
 

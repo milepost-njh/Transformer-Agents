@@ -21,6 +21,60 @@ sys.path.append(parent_dir)
 
 from inference import InferenceEngine, InferenceConfig
 
+# 从train_tmp.py复制必要的函数定义
+def create_padding_mask(batch_data: torch.Tensor, pad_token_id: int = 0):
+    """
+    输入:
+        batch_data: [batch_size, seq_len]，填充位置用 pad_token_id 表示
+        pad_token_id: 默认是 0
+    输出:
+        padding_mask: [batch_size, 1, 1, seq_len]
+    """
+    mask = (batch_data == pad_token_id).float()
+    return mask[:, None, None, :]  # [B, 1, 1, L]
+
+
+def create_look_ahead_mask(size: int):
+    """
+    生成 Look-ahead mask (上三角矩阵)
+    参数:
+        size: 序列长度 (seq_len)
+    返回:
+        mask: [seq_len, seq_len]，上三角为 1，其他为 0
+    """
+    ones = torch.ones((size, size))
+    mask = torch.triu(ones, diagonal=1)
+    return mask
+
+
+def create_masks(
+        inp_ids: torch.Tensor,  # [B, L_src]
+        tar_ids: torch.Tensor,  # [B, L_tgt]
+        src_pad_id: int = 0,
+        tgt_pad_id: int = 0,
+):
+    """
+    返回:
+      encoder_padding_mask         : [B, 1, 1, L_src]
+      decoder_mask (LA + padding)  : [B, 1, L_tgt, L_tgt]
+      encoder_decoder_padding_mask : [B, 1, 1, L_src]
+    """
+    encoder_padding_mask = create_padding_mask(inp_ids, pad_token_id=src_pad_id)
+    encoder_decoder_padding_mask = create_padding_mask(inp_ids, pad_token_id=src_pad_id)
+
+    B, L_tgt = tar_ids.size(0), tar_ids.size(1)
+
+    look_ahead = create_look_ahead_mask(L_tgt).to(
+        device=tar_ids.device, dtype=encoder_padding_mask.dtype
+    ).unsqueeze(0).unsqueeze(1)
+
+    decoder_padding_mask = create_padding_mask(tar_ids, pad_token_id=tgt_pad_id)
+    decoder_padding_mask = decoder_padding_mask.expand(-1, -1, L_tgt, -1)
+
+    decoder_mask = torch.maximum(decoder_padding_mask, look_ahead)
+
+    return encoder_padding_mask, decoder_mask, encoder_decoder_padding_mask
+
 def get_gpu_memory():
     """获取GPU内存使用量 (MB)"""
     if torch.cuda.is_available():
@@ -131,7 +185,7 @@ class AutoregressiveInferenceEngine:
                 kv_cache_sizes.append(kv_cache_size)
                 
                 # 创建masks
-                enc_pad_mask, dec_mask, enc_dec_pad_mask = self.engine.loader.model.create_masks(
+                enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
                     encoder_input, decoder_input,
                     src_pad_id=self.engine.loader.pt_tokenizer.pad_token_id,
                     tgt_pad_id=self.engine.loader.en_tokenizer.pad_token_id,
