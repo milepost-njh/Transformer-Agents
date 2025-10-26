@@ -39,21 +39,21 @@ from train_tmp import (
 
 
 def get_gpu_memory():
-    """获取GPU内存使用量 (MB)"""
+    """获取GPU显存使用量 (MB)"""
     if torch.cuda.is_available():
         return torch.cuda.memory_allocated() / 1024 / 1024
     return 0
 
 
 def clear_memory():
-    """清理内存"""
+    """清理GPU显存"""
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
 
 class KVCacheTracker:
-    """KV-cache追踪器，用于监控内存使用"""
+    """KV-cache追踪器，用于监控GPU显存使用"""
     
     def __init__(self, num_layers: int, num_heads: int, head_dim: int, 
                  use_mla: bool = False, kv_lora_rank: int = None, 
@@ -74,11 +74,11 @@ class KVCacheTracker:
         计算给定序列长度的KV-cache大小（MB）
         
         对于标准注意力:
-            KV-cache = 2 * num_layers * num_heads * head_dim * seq_len * 4 bytes
+            KV-cache = 2 * num_layers * num_heads * head_dim * seq_len * 2 bytes (bf16)
         
         对于MLA:
-            K-cache = num_layers * (kv_lora_rank + qk_rope_head_dim) * seq_len * 4 bytes
-            V-cache = num_layers * num_heads * v_head_dim * seq_len * 4 bytes
+            K-cache = num_layers * (kv_lora_rank + qk_rope_head_dim) * seq_len * 2 bytes (bf16)
+            V-cache = num_layers * num_heads * v_head_dim * seq_len * 2 bytes (bf16)
         """
         if self.use_mla:
             # MLA模式：压缩的KV-cache
@@ -93,8 +93,8 @@ class KVCacheTracker:
             # K和V都是 [num_heads, seq_len, head_dim]
             total_params = 2 * self.num_heads * self.head_dim * seq_len * self.num_layers
         
-        # 转换为MB（float32: 4字节）
-        size_mb = total_params * 4 / (1024 * 1024)
+        # 转换为MB（bf16: 2字节）
+        size_mb = total_params * 2 / (1024 * 1024)
         return size_mb
     
     def record_step(self, seq_len: int):
@@ -392,12 +392,12 @@ def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str,
     logger.info(f"  生成token数: {result['num_tokens_generated']}")
     logger.info(f"  总时间: {result['generation_time']:.3f}s")
     logger.info(f"  平均每步时间: {result['avg_step_time']*1000:.2f}ms")
-    logger.info(f"\n内存使用:")
-    logger.info(f"  初始GPU内存: {initial_gpu_memory:.1f} MB")
+    logger.info(f"\nGPU显存使用:")
+    logger.info(f"  初始GPU显存: {initial_gpu_memory:.1f} MB")
     logger.info(f"  模型加载后: {model_gpu_memory:.1f} MB")
     logger.info(f"  生成后: {final_gpu_memory:.1f} MB")
-    logger.info(f"  最大KV-cache: {result['max_kv_cache_size']:.2f} MB")
-    logger.info(f"  最终KV-cache: {result['final_kv_cache_size']:.2f} MB")
+    logger.info(f"  最大KV-cache显存: {result['max_kv_cache_size']:.2f} MB")
+    logger.info(f"  最终KV-cache显存: {result['final_kv_cache_size']:.2f} MB")
     
     return {
         'model_name': model_name,
@@ -440,19 +440,19 @@ def compare_results(mla_result: Dict, standard_result: Dict):
     logger.info(f"  Standard: {standard_result['avg_step_time']*1000:.2f}ms")
     logger.info(f"  差异: {step_time_diff*1000:+.2f}ms ({step_time_improvement:+.1f}%)")
     
-    # KV-cache内存对比
+    # KV-cache显存对比
     kv_diff = standard_result['max_kv_cache_size'] - mla_result['max_kv_cache_size']
     kv_improvement = (kv_diff / standard_result['max_kv_cache_size'] * 100) if standard_result['max_kv_cache_size'] > 0 else 0
     
-    logger.info(f"\n💾 KV-cache内存:")
+    logger.info(f"\n💾 KV-cache显存:")
     logger.info(f"  MLA: {mla_result['max_kv_cache_size']:.2f} MB")
     logger.info(f"  Standard: {standard_result['max_kv_cache_size']:.2f} MB")
     logger.info(f"  节省: {kv_diff:.2f} MB ({kv_improvement:.1f}%)")
     
-    # GPU内存对比
+    # GPU显存对比
     gpu_diff = standard_result['final_gpu_memory'] - mla_result['final_gpu_memory']
     
-    logger.info(f"\n🖥️  GPU内存:")
+    logger.info(f"\n🖥️  总GPU显存:")
     logger.info(f"  MLA: {mla_result['final_gpu_memory']:.1f} MB")
     logger.info(f"  Standard: {standard_result['final_gpu_memory']:.1f} MB")
     logger.info(f"  差异: {gpu_diff:+.1f} MB")
@@ -460,7 +460,7 @@ def compare_results(mla_result: Dict, standard_result: Dict):
     # 结论
     logger.info(f"\n💡 结论:")
     if kv_improvement > 0:
-        logger.info(f"  ✅ MLA成功压缩KV-cache，节省 {kv_improvement:.1f}% 内存")
+        logger.info(f"  ✅ MLA成功压缩KV-cache，节省 {kv_improvement:.1f}% 显存")
     else:
         logger.info(f"  ❌ MLA未能有效压缩KV-cache")
     
