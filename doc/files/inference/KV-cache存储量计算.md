@@ -6,7 +6,7 @@
 
 | 符号 | 含义 | 说明 |
 |-----|------|------|
-| `L` | Transformer层数 | 指decoder堆栈中的层数 |
+| `L` | Transformer层数 | 指decoder的层数 |
 | `H` | 注意力头数 (num_heads) | 单层内的并行注意力头 |
 | `d_h` | 头维度 (head_dim) | 每个注意力头的向量维度 |
 | `d` | 隐藏维度 (d_model) | 总维度，满足 `d = H × d_h` |
@@ -32,17 +32,23 @@
 ### 1.2.1 公式定义
 
 **MHA (Multi-Head Attention)**:
-$$KV\text{-}Cache = L \times H \times d_h \times 2$$
+$$
+KV\text{-}Cache = L \times H \times d_h \times 2
+$$
 
 其中 2 代表 K 和 V 两个矩阵。
 
 **MQA (Multi-Query Attention)**:
-$$KV\text{-}Cache = L \times d_h \times 2$$
+$$
+KV\text{-}Cache = L \times d_h \times 2
+$$
 
 所有头共享单个 K/V。
 
 **MLA (Multi-head Latent Attention)**:
-$$KV\text{-}Cache = L \times (d_{kv\_compressed} + d_{rope})$$
+$$
+KV\text{-}Cache = L \times (d_{kv\_compressed} + d_{rope})
+$$
 
 其中：
 - $d_{kv\_compressed}$ 是压缩的 KV 维度
@@ -105,7 +111,9 @@ L × H × d_h × 2 = 80 × 64 × 128 × 2 = 1,310,720 参数
 
 对于 Batch 大小为 1：
 
-$$Total\text{-}KV\text{-}Cache = S \times (\text{单token参数} \times 2\text{ bytes})$$
+$$
+Total\text{-}KV\text{-}Cache = S \times (\text{单token参数} \times 2\text{ bytes})
+$$
 
 **你的模型 (S=64)**:
 - MHA: 64 × 16 KB = 1.00 MB
@@ -117,12 +125,19 @@ $$Total\text{-}KV\text{-}Cache = S \times (\text{单token参数} \times 2\text{ 
 ### 1.5.1 理论对比
 
 **标准注意力 (MHA)**:
-$$KV\text{-}Cache = 8 \times 8 \times 64 \times 64 \times 2 = 1.00 \text{ MB}$$
+$$
+KV\text{-}Cache = 8 \times 8 \times 64 \times 64 \times 2 = 1.00 \text{ MB}
+$$
 
 **MLA**:
-$$KV\text{-}Cache = (128 + 32 + 512) \times 8 \times 64 \times 2 = 0.66 \text{ MB}$$
+$$
+KV\text{-}Cache = (128 + 32 + 512) \times 8 \times 64 \times 2 = 0.66 \text{ MB}
+$$
 
-**压缩比**: $(1.00 - 0.66) / 1.00 = 34.0\%$
+**压缩比**: 
+$$
+(1.00 - 0.66) / 1.00 = 34.0\%
+$$
 
 ### 1.5.2 实验验证 (64 tokens)
 
