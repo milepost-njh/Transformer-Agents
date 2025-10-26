@@ -2008,11 +2008,15 @@ if __name__ == "__main__":
     weight_decay = 0.01
 
     # 模型结构
-    num_layers = 8
-    d_model = 512  # hidden-size
+    num_layers = 8  # 模型层数 (对应Qwen-72B的80层)
+    d_model = 512  # hidden-size (对应Qwen-72B的4096)
     dff = 2048
-    num_heads = 8
+    num_heads = 8  # 注意力头数 (对应Qwen-72B的64个Head)
     dropout_rate = 0.1
+    
+    # # KV Cache 计算相关参数
+    # head_dim = d_model // num_heads  # 每个Head的向量维度 = 512/8 = 64 (对应Qwen-72B的128)
+    
 
     # MoE 配置 - 优化以减少梯度不稳定
     use_moe = True  # 是否使用 MoE
@@ -2059,7 +2063,7 @@ if __name__ == "__main__":
     # MLA 配置
     # use_mla 已在命令行参数中定义
     q_lora_rank = d_model // 2  # Q 的低秩维度，默认为 d_model 的一半
-    kv_lora_rank = d_model // 4  # KV 的低秩维度，默认为 d_model 的 1/4
+    kv_lora_rank = 4 * (d_model // num_heads)  # KV 的低秩维度，遵循DeepSeek标准：4 × head_dim
 
     # 4. 构建模型
     input_vocab_size = pt_tokenizer.vocab_size
