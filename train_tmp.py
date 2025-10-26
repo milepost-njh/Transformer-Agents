@@ -756,13 +756,16 @@ class MultiHeadAttention(nn.Module):
         x = x.view(B, L, H * Dh)  # [B, L, d_model]
         return x
 
-    def forward(self, q, k, v, mask=None, return_attn: bool = True):
+    def forward(self, q, k, v, mask=None, return_attn: bool = True, past_key_value=None, use_cache: bool = False):
         """
         q, k, v: [B, Lq/Lk/Lv, d_model]
         mask: 期望形状为 [B, 1, Lq, Lk] 或 [B, Lq, Lk]；值为1表示屏蔽，0表示保留
+        past_key_value: 可选的KV-cache，格式为(past_k, past_v)
+        use_cache: 是否返回KV-cache
         return:
           output: [B, Lq, d_model]
           attention_weights (可选): [B, num_heads, Lq, Lk]
+          present_key_value (可选): 当前的KV-cache
         """
         B = q.size(0)
 
@@ -813,6 +816,16 @@ class MultiHeadAttention(nn.Module):
 
             # 使用 value_states 作为 v
             v_states = value_states
+            
+            # KV-cache 处理
+            if past_key_value is not None:
+                # 使用缓存的K和V
+                past_k, past_v = past_key_value
+                key_states = torch.cat([past_k, key_states], dim=2)  # [B, H, Lk_past+Lk, head_dim]
+                v_states = torch.cat([past_v, v_states], dim=2)  # [B, H, Lk_past+Lk, v_head_dim]
+            
+            # 保存当前的KV用于下一步
+            present_key_value = (key_states, v_states) if use_cache else None
 
             # 处理 mask
             if mask is not None:
@@ -835,6 +848,12 @@ class MultiHeadAttention(nn.Module):
 
             # 输出投影
             output = self.out_proj(attn_out)  # [B, Lq, d_model]
+            
+            # 返回值处理
+            if use_cache:
+                if return_attn:
+                    return output, attn_weights, present_key_value
+                return output, present_key_value
         else:
             # 标准模式
             # 线性映射
@@ -855,6 +874,16 @@ class MultiHeadAttention(nn.Module):
                 cos_k, sin_k = self._rope_get_cos_sin(Lk, self.depth, k.device)
                 q = self._rope_apply(q, cos_q, sin_q)
                 k = self._rope_apply(k, cos_k, sin_k)
+            
+            # KV-cache 处理
+            if past_key_value is not None:
+                # 使用缓存的K和V
+                past_k, past_v = past_key_value
+                k = torch.cat([past_k, k], dim=2)  # [B, H, Lk_past+Lk, Dh]
+                v = torch.cat([past_v, v], dim=2)  # [B, H, Lk_past+Lk, Dh]
+            
+            # 保存当前的KV用于下一步
+            present_key_value = (k, v) if use_cache else None
 
             # 处理 mask：广播到 [B, H, Lq, Lk]
             if mask is not None:
@@ -876,9 +905,15 @@ class MultiHeadAttention(nn.Module):
             # 输出线性层
             output = self.out_proj(attn_out)  # [B, Lq, d_model]
 
-        if return_attn:
-            return output, attn_weights
-        return output
+        # 统一返回值处理
+        if use_cache:
+            if return_attn:
+                return output, attn_weights, present_key_value
+            return output, present_key_value
+        else:
+            if return_attn:
+                return output, attn_weights
+            return output
 
 
 def feed_forward_network(d_model, dff, use_moe=False, moe_config=None):
