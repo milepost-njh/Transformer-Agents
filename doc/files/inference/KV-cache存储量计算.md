@@ -51,8 +51,8 @@ KV\text{-}Cache = L \times (d_{kv\_compressed} + d_{rope})
 $$
 
 其中：
-- $d_{kv\_compressed}$ 是压缩的 KV 维度
-- $d_{rope}$ 是 RoPE 位置编码维度
+- \(d_{kv\_compressed}\) 是压缩的 KV 维度
+- \(d_{rope}\) 是 RoPE 位置编码维度
 
 ### 1.2.2 具体数值
 
