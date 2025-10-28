@@ -212,8 +212,9 @@ class KVCacheInferenceEngine:
                     encoder_outputs = enc_output
                     encoder_cache = None
                 
-                # KV-cache: {"encoder": encoder_cache, "decoder": decoder_cache}
-                past_key_values = {"encoder": encoder_cache, "decoder": None}
+                # KV-cache: 只需要decoder的self-attention cache
+                # encoder cache在encoder内部使用，cross-attention不需要cache（因为encoder输出固定）
+                past_key_values = {"encoder": None, "decoder": None}
                 
                 # Decode阶段：逐token生成
                 for step in range(max_new_tokens):

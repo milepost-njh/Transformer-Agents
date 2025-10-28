@@ -1077,13 +1077,10 @@ class DecoderLayer(nn.Module):
         out1 = self.norm1(x + attn1_out)
 
         # TODO: 交叉注意力 - 解码器对编码器输出的注意力，query来自decoder，key/value来自encoder
-        mha2_output = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask, past_key_value=cross_attn_past_kv, use_cache=use_cache)
-        
-        if use_cache:
-            attn2_out, attn_weights2, cross_attn_present_kv = mha2_output
-        else:
-            attn2_out, attn_weights2 = mha2_output
-            cross_attn_present_kv = None
+        # 注意：cross-attention不使用cache，因为encoder输出是固定的
+        mha2_output = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask, past_key_value=None, use_cache=False)
+        attn2_out, attn_weights2 = mha2_output
+        cross_attn_present_kv = None  # cross-attention不需要cache
         
         attn2_out = self.dropout2(attn2_out)
         out2 = self.norm2(out1 + attn2_out)

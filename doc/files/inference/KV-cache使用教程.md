@@ -36,9 +36,9 @@ ls tok_en/tokenizer.json       # 英语tokenizer
 
 ```bash
 # 单模型测试（真正cache vs 模拟cache，自动验证正确性）
-python inference/compare_kv_cache_mla.py \
+CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
     --mla_checkpoint checkpoints/mid_e1_s222.pt \
-    --test_lengths 64
+    --test_lengths 128
 ```
 
 ### 步骤3: 查看性能提升
