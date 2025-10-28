@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 from transformers import get_cosine_schedule_with_warmup
+from typing import Tuple, Optional, Dict, List
 from datetime import datetime
 from loguru import logger
 from torch.utils.tensorboard import SummaryWriter
@@ -960,13 +961,23 @@ class EncoderLayer(nn.Module):
         self.dropout1 = nn.Dropout(rate)
         self.dropout2 = nn.Dropout(rate)
 
-    def forward(self, x: torch.Tensor, src_mask: torch.Tensor = None):
+    def forward(self, x: torch.Tensor, src_mask: torch.Tensor = None, 
+                past_key_value: Tuple[torch.Tensor, torch.Tensor] = None, use_cache: bool = False):
         """
         返回:
           out: [B, L, d_model] 或 (out, router_logits) 如果使用 MoE
+          present_key_value: 当前的KV-cache（如果use_cache=True）
         """
         # TODO: 全局自注意力 - 编码器中的自注意力，可以关注序列中的所有位置
-        attn_out, _ = self.mha(x, x, x, mask=src_mask)  # [B, L, d_model], [B, H, L, L]
+        mha_output = self.mha(x, x, x, mask=src_mask, past_key_value=past_key_value, use_cache=use_cache)
+        
+        # 处理MHA的返回值
+        if use_cache:
+            attn_out, _, present_key_value = mha_output
+        else:
+            attn_out, _ = mha_output
+            present_key_value = None
+        
         attn_out = self.dropout1(attn_out)  # 训练模式下生效
         out1 = self.norm1(x + attn_out)  # 残差 + RMSNorm
 
@@ -980,9 +991,15 @@ class EncoderLayer(nn.Module):
         ffn_out = self.dropout2(ffn_out)
         out2 = self.norm2(out1 + ffn_out)
 
-        if router_logits is not None:
-            return out2, router_logits
-        return out2
+        # 返回值处理
+        if use_cache:
+            if router_logits is not None:
+                return out2, router_logits, present_key_value
+            return out2, present_key_value
+        else:
+            if router_logits is not None:
+                return out2, router_logits
+            return out2
 
 
 class DecoderLayer(nn.Module):
@@ -1022,14 +1039,52 @@ class DecoderLayer(nn.Module):
             enc_out: torch.Tensor,
             tgt_mask: torch.Tensor = None,
             enc_dec_mask: torch.Tensor = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]] = None,
+            use_cache: bool = False,
     ):
+        """
+        Args:
+            x: decoder输入 [B, Lt, D]
+            enc_out: encoder输出 [B, Ls, D]
+            tgt_mask: decoder自注意力mask
+            enc_dec_mask: encoder-decoder交叉注意力mask
+            past_key_values: (self_attn_cache, cross_attn_cache) 元组
+            use_cache: 是否返回KV-cache
+        
+        Returns:
+            out3: decoder输出
+            attn_weights1: self-attention权重
+            attn_weights2: cross-attention权重
+            present_key_values: 当前的KV-cache (如果use_cache=True)
+            router_logits: MoE路由logits (如果使用MoE)
+        """
+        # 解析past_key_values
+        if past_key_values is not None:
+            self_attn_past_kv, cross_attn_past_kv = past_key_values
+        else:
+            self_attn_past_kv, cross_attn_past_kv = None, None
+        
         # TODO: 掩码自注意力 - 解码器自注意力，使用look-ahead+padding掩码防止信息泄露
-        attn1_out, attn_weights1 = self.mha1(x, x, x, mask=tgt_mask)  # [B,Lt,D], [B,H,Lt,Lt]
+        mha1_output = self.mha1(x, x, x, mask=tgt_mask, past_key_value=self_attn_past_kv, use_cache=use_cache)
+        
+        if use_cache:
+            attn1_out, attn_weights1, self_attn_present_kv = mha1_output
+        else:
+            attn1_out, attn_weights1 = mha1_output
+            self_attn_present_kv = None
+        
         attn1_out = self.dropout1(attn1_out)
         out1 = self.norm1(x + attn1_out)
 
         # TODO: 交叉注意力 - 解码器对编码器输出的注意力，query来自decoder，key/value来自encoder
-        attn2_out, attn_weights2 = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask)  # [B,Lt,D], [B,H,Lt,Ls]
+        mha2_output = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask, past_key_value=cross_attn_past_kv, use_cache=use_cache)
+        
+        if use_cache:
+            attn2_out, attn_weights2, cross_attn_present_kv = mha2_output
+        else:
+            attn2_out, attn_weights2 = mha2_output
+            cross_attn_present_kv = None
+        
         attn2_out = self.dropout2(attn2_out)
         out2 = self.norm2(out1 + attn2_out)
 
@@ -1043,9 +1098,20 @@ class DecoderLayer(nn.Module):
         ffn_out = self.dropout3(ffn_out)
         out3 = self.norm3(out2 + ffn_out)  # [B,Lt,D]
 
-        if router_logits is not None:
-            return out3, attn_weights1, attn_weights2, router_logits
-        return out3, attn_weights1, attn_weights2
+        # 组合present_key_values
+        present_key_values = None
+        if use_cache:
+            present_key_values = (self_attn_present_kv, cross_attn_present_kv)
+
+        # 返回值处理
+        if use_cache:
+            if router_logits is not None:
+                return out3, attn_weights1, attn_weights2, present_key_values, router_logits
+            return out3, attn_weights1, attn_weights2, present_key_values
+        else:
+            if router_logits is not None:
+                return out3, attn_weights1, attn_weights2, router_logits
+            return out3, attn_weights1, attn_weights2
 
 
 class EncoderModel(nn.Module):
@@ -1082,11 +1148,15 @@ class EncoderModel(nn.Module):
         # 预存缩放因子
         self.scale = math.sqrt(d_model)
 
-    def forward(self, x: torch.Tensor, src_mask: torch.Tensor = None):
+    def forward(self, x: torch.Tensor, src_mask: torch.Tensor = None, 
+                past_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = None,
+                use_cache: bool = False):
         """
         x: [B, L]  （token ids）
         src_mask: [B, 1, L, L] 或 [B, L, L]，1=屏蔽，0=保留（与前文一致）
-        return: 编码结果 [B, L, d_model]
+        past_key_values: 每层的KV-cache列表
+        use_cache: 是否返回KV-cache
+        return: 编码结果 [B, L, d_model] 和可选的cache/router_logits
         """
         B, L = x.shape
         # 等价于 tf.debugging.assert_less_equal
@@ -1105,17 +1175,41 @@ class EncoderModel(nn.Module):
 
         # 逐层 Encoder
         router_logits_list = []
-        for layer in self.encoder_layers:
-            layer_output = layer(x, src_mask)
-            if isinstance(layer_output, tuple):
-                x, router_logits = layer_output
-                router_logits_list.append(router_logits)
+        present_key_values = [] if use_cache else None
+        
+        for layer_idx, layer in enumerate(self.encoder_layers):
+            # 获取该层的past_key_value
+            layer_past_kv = past_key_values[layer_idx] if past_key_values is not None else None
+            
+            layer_output = layer(x, src_mask, past_key_value=layer_past_kv, use_cache=use_cache)
+            
+            # 处理返回值（可能包含router_logits和present_key_value）
+            if use_cache:
+                if len(layer_output) == 3:
+                    # (out, router_logits, present_kv)
+                    x, router_logits, layer_present_kv = layer_output
+                    router_logits_list.append(router_logits)
+                    present_key_values.append(layer_present_kv)
+                else:
+                    # (out, present_kv)
+                    x, layer_present_kv = layer_output
+                    present_key_values.append(layer_present_kv)
             else:
-                x = layer_output
+                if isinstance(layer_output, tuple):
+                    x, router_logits = layer_output
+                    router_logits_list.append(router_logits)
+                else:
+                    x = layer_output
 
-        if router_logits_list:
-            return x, router_logits_list
-        return x
+        # 返回值处理
+        if use_cache:
+            if router_logits_list:
+                return x, router_logits_list, present_key_values
+            return x, present_key_values
+        else:
+            if router_logits_list:
+                return x, router_logits_list
+            return x
 
 
 class DecoderModel(nn.Module):
@@ -1160,7 +1254,24 @@ class DecoderModel(nn.Module):
             enc_out: torch.Tensor,  # [B, L_src, D] 编码器输出
             tgt_mask: torch.Tensor = None,  # [B, 1, L_tgt, L_tgt] 或 [B, L_tgt, L_tgt]（look-ahead+padding）
             enc_dec_mask: torch.Tensor = None,  # [B, 1, L_tgt, L_src] 或 [B, L_tgt, L_src]（对 encoder 的 padding）
+            past_key_values: Optional[List[Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]]] = None,
+            use_cache: bool = False,
     ):
+        """
+        Args:
+            x: decoder输入token ids [B, Lt]
+            enc_out: encoder输出 [B, Ls, D]
+            tgt_mask: decoder自注意力mask
+            enc_dec_mask: encoder-decoder交叉注意力mask
+            past_key_values: 每层的(self_attn_kv, cross_attn_kv)元组列表
+            use_cache: 是否返回KV-cache
+        
+        Returns:
+            x: decoder输出 [B, Lt, D]
+            attention_weights: 注意力权重字典
+            present_key_values: 当前的KV-cache列表 (如果use_cache=True)
+            router_logits_list: MoE路由logits (如果使用MoE)
+        """
         B, Lt = x.shape
         if Lt > self.max_length:
             raise ValueError(f"output_seq_len ({Lt}) should be ≤ max_length ({self.max_length})")
@@ -1173,22 +1284,50 @@ class DecoderModel(nn.Module):
 
         attention_weights = {}
         router_logits_list = []
+        present_key_values = [] if use_cache else None
 
         for i, layer in enumerate(self.decoder_layers, start=1):
-            layer_output = layer(x, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask)
-            if len(layer_output) == 4:  # 包含 router_logits
-                x, attn1, attn2, router_logits = layer_output
-                router_logits_list.append(router_logits)
-            else:  # 不包含 router_logits
-                x, attn1, attn2 = layer_output
+            layer_idx = i - 1
+            # 获取该层的past_key_values
+            layer_past_kv = past_key_values[layer_idx] if past_key_values is not None else None
+            
+            layer_output = layer(
+                x, enc_out, 
+                tgt_mask=tgt_mask, 
+                enc_dec_mask=enc_dec_mask,
+                past_key_values=layer_past_kv,
+                use_cache=use_cache
+            )
+            
+            # 处理返回值
+            if use_cache:
+                if len(layer_output) == 5:  # 包含 router_logits
+                    x, attn1, attn2, layer_present_kv, router_logits = layer_output
+                    router_logits_list.append(router_logits)
+                    present_key_values.append(layer_present_kv)
+                else:  # 不包含 router_logits
+                    x, attn1, attn2, layer_present_kv = layer_output
+                    present_key_values.append(layer_present_kv)
+            else:
+                if len(layer_output) == 4:  # 包含 router_logits
+                    x, attn1, attn2, router_logits = layer_output
+                    router_logits_list.append(router_logits)
+                else:  # 不包含 router_logits
+                    x, attn1, attn2 = layer_output
 
             attention_weights[f"decoder_layer{i}_att1"] = attn1  # [B, H, Lt, Lt]
             attention_weights[f"decoder_layer{i}_att2"] = attn2  # [B, H, Lt, Ls]
 
         # x: (B, Lt, D)
-        if router_logits_list:
-            return x, attention_weights, router_logits_list
-        return x, attention_weights
+        # 返回值处理
+        if use_cache:
+            if router_logits_list:
+                return x, attention_weights, present_key_values, router_logits_list
+            return x, attention_weights, present_key_values
+        else:
+            if router_logits_list:
+                return x, attention_weights, router_logits_list
+            return x, attention_weights
 
 
 class Transformer(nn.Module):
@@ -1233,34 +1372,91 @@ class Transformer(nn.Module):
         # 等价于 Keras 的 Dense(target_vocab_size)
         self.final_layer = nn.Linear(d_model, target_vocab_size)
 
-    def forward(self, inp_ids, tgt_ids, src_mask=None, tgt_mask=None, enc_dec_mask=None):
+    def forward(self, inp_ids, tgt_ids, src_mask=None, tgt_mask=None, enc_dec_mask=None,
+                past_key_values: Optional[Dict[str, List]] = None, use_cache: bool = False,
+                encoder_outputs: Optional[torch.Tensor] = None):
         """
-        inp_ids: [B, L_src]  源端 token ids
-        tgt_ids: [B, L_tgt]  目标端 token ids（训练时通常是 shift 后的 decoder 输入）
-        src_mask:    [B, 1, L_src, L_src] 或 [B, L_src, L_src]（1=屏蔽）
-        tgt_mask:    [B, 1, L_tgt, L_tgt] 或 [B, L_tgt, L_tgt]（look-ahead+padding）
-        enc_dec_mask:[B, 1, L_tgt, L_src] 或 [B, L_tgt, L_src]
-        返回:
-          logits: [B, L_tgt, target_vocab_size]
-          attention_weights: dict，包含每层的 attn
-          router_logits: list，包含每层的 router_logits（如果使用 MoE）
+        Transformer前向传播
+        
+        Args:
+            inp_ids: [B, L_src]  源端 token ids
+            tgt_ids: [B, L_tgt]  目标端 token ids（训练时通常是 shift 后的 decoder 输入）
+            src_mask:    [B, 1, L_src, L_src] 或 [B, L_src, L_src]（1=屏蔽）
+            tgt_mask:    [B, 1, L_tgt, L_tgt] 或 [B, L_tgt, L_tgt]（look-ahead+padding）
+            enc_dec_mask:[B, 1, L_tgt, L_src] 或 [B, L_tgt, L_src]
+            past_key_values: {"encoder": encoder_cache_list, "decoder": decoder_cache_list}
+                           仅在推理时使用，训练时为None
+            use_cache: 是否返回KV-cache（训练时=False，推理时=True）
+            encoder_outputs: 预计算的encoder输出（仅推理decode阶段使用）
+        
+        Returns:
+            logits: [B, L_tgt, target_vocab_size]
+            attention_weights: dict，包含每层的 attn
+            present_key_values: 当前的KV-cache (如果use_cache=True)
+            router_logits: list，包含每层的 router_logits（如果使用 MoE）
+        
+        使用说明：
+            训练模式：use_cache=False（默认），正常并行计算所有位置
+            推理模式：use_cache=True，启用KV-cache加速自回归生成
+                    - Prefill阶段：计算encoder一次，保存cache
+                    - Decode阶段：逐token生成，复用历史KV
         """
-        enc_output = self.encoder_model(inp_ids, src_mask=src_mask)  # [B, L_src, D] 或 (enc_out, enc_router_logits)
-        if isinstance(enc_output, tuple):
-            enc_out, enc_router_logits = enc_output
+        # 解析past_key_values
+        encoder_past_kv = None
+        decoder_past_kv = None
+        if past_key_values is not None:
+            encoder_past_kv = past_key_values.get("encoder", None)
+            decoder_past_kv = past_key_values.get("decoder", None)
+        
+        # Encoder阶段
+        if encoder_outputs is None:
+            # 需要运行encoder（prefill阶段或训练阶段）
+            enc_output = self.encoder_model(inp_ids, src_mask=src_mask, 
+                                           past_key_values=encoder_past_kv, use_cache=use_cache)
+            
+            if use_cache:
+                if len(enc_output) == 3:
+                    # (enc_out, enc_router_logits, encoder_present_kv)
+                    enc_out, enc_router_logits, encoder_present_kv = enc_output
+                else:
+                    # (enc_out, encoder_present_kv)
+                    enc_out, encoder_present_kv = enc_output
+                    enc_router_logits = None
+            else:
+                if isinstance(enc_output, tuple):
+                    enc_out, enc_router_logits = enc_output
+                else:
+                    enc_out = enc_output
+                    enc_router_logits = None
+                encoder_present_kv = None
         else:
-            enc_out = enc_output
+            # 复用已有的encoder输出（decode阶段）
+            enc_out = encoder_outputs
             enc_router_logits = None
+            encoder_present_kv = encoder_past_kv  # 保持encoder cache不变
 
+        # Decoder阶段
         dec_output = self.decoder_model(
-            tgt_ids, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask
-        )  # [B, L_tgt, D], dict 或 (dec_out, attention_weights, dec_router_logits)
+            tgt_ids, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask,
+            past_key_values=decoder_past_kv, use_cache=use_cache
+        )
 
-        if isinstance(dec_output, tuple) and len(dec_output) == 3:
-            dec_out, attention_weights, dec_router_logits = dec_output
+        # 处理decoder输出
+        if use_cache:
+            if len(dec_output) == 4:
+                # (dec_out, attention_weights, decoder_present_kv, dec_router_logits)
+                dec_out, attention_weights, decoder_present_kv, dec_router_logits = dec_output
+            else:
+                # (dec_out, attention_weights, decoder_present_kv)
+                dec_out, attention_weights, decoder_present_kv = dec_output
+                dec_router_logits = None
         else:
-            dec_out, attention_weights = dec_output
-            dec_router_logits = None
+            if isinstance(dec_output, tuple) and len(dec_output) == 3:
+                dec_out, attention_weights, dec_router_logits = dec_output
+            else:
+                dec_out, attention_weights = dec_output
+                dec_router_logits = None
+            decoder_present_kv = None
 
         logits = self.final_layer(dec_out)  # [B, L_tgt, V_tgt]
 
@@ -1271,9 +1467,23 @@ class Transformer(nn.Module):
         if dec_router_logits:
             router_logits.extend(dec_router_logits)
 
-        if router_logits:
-            return logits, attention_weights, router_logits
-        return logits, attention_weights
+        # 组合present_key_values
+        present_key_values = None
+        if use_cache:
+            present_key_values = {
+                "encoder": encoder_present_kv,
+                "decoder": decoder_present_kv
+            }
+
+        # 返回值处理
+        if use_cache:
+            if router_logits:
+                return logits, attention_weights, present_key_values, router_logits
+            return logits, attention_weights, present_key_values
+        else:
+            if router_logits:
+                return logits, attention_weights, router_logits
+            return logits, attention_weights
 
 
 class CustomizedSchedule(_LRScheduler):
@@ -1467,6 +1677,15 @@ class AverageMeter:
 
 
 def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, mtp_config=None):
+    """
+    训练单步
+    
+    注意：训练时不使用KV-cache（use_cache默认为False）
+    原因：
+    - 训练使用teacher forcing，有完整的目标序列
+    - 可以并行计算所有位置的attention，无需逐token生成
+    - KV-cache主要用于推理阶段的自回归生成
+    """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     transformer.train()
@@ -1498,11 +1717,15 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         autocast_ctx = nullcontext()
 
     with autocast_ctx:
+        # 训练时不使用KV-cache（use_cache=False是默认值，这里不显式传递）
+        # 原因：训练有完整序列，可以并行计算，无需缓存历史K/V
+        # KV-cache只在推理的自回归生成时才有用
         transformer_output = transformer(
             inp, tar_inp,
             src_mask=enc_pad_mask,
             tgt_mask=dec_mask,
             enc_dec_mask=enc_dec_mask
+            # use_cache=False  # 默认值，不需要显式写
         )
 
     # 处理 MoE 和 MTP 输出

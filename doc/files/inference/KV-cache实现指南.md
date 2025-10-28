@@ -96,96 +96,164 @@ def generate_with_kv_cache(self, input_text: str, max_new_tokens: int = 64):
     }
 ```
 
-## 实现状态说明 ⚠️
+## 实现状态说明
 
-### 当前实现：显存测量（模拟 KV-cache）
+### 阶段一：模拟KV-cache（显存测量工具）
 
-**重要**：`compare_kv_cache_mla.py` 中的实现是**显存测量工具**，而非完整的 KV-cache 推理优化。
+**目的**：测量和对比 MLA vs 标准注意力的显存节省效果
 
-#### 已实现功能
+#### 已实现功能（阶段一）
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
 | **底层注意力层支持** | ✅ 已实现 | `MultiHeadAttention` 支持 `past_key_value` 和 `use_cache` |
 | **显存计算** | ✅ 已实现 | `KVCacheTracker` 可准确计算理论显存占用 |
-| **对比测试** | ✅ 已实现 | 可对比 MLA vs 标准注意力的显存差异 |
+| **对比测试** | ✅ 已实现 | 可对比 MLA vs 标准注意力的显存差异（34.4% 节省） |
 
-#### 未实现功能
+#### 限制（阶段一）
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| **上层模型传递** | ❌ 未实现 | `Transformer`/`Decoder`/`DecoderLayer` 未传递 KV-cache 参数 |
-| **计算复用** | ❌ 未实现 | 每步重新计算整个序列，未复用历史 K/V |
-| **真正的推理加速** | ❌ 未实现 | 无法节省计算时间，只能测量显存 |
+| **上层模型传递** | ❌ 未实现（阶段一） | 当时`Transformer`/`Decoder`/`DecoderLayer` 未传递 KV-cache 参数 |
+| **计算复用** | ❌ 未实现（阶段一） | 每步重新计算整个序列，未复用历史 K/V |
+| **真正的推理加速** | ❌ 未实现（阶段一） | 无法节省计算时间，只能测量显存 |
 
-#### 真正的 KV-cache vs 当前的模拟 KV-cache
-
-**真正的 KV-cache**（未实现）：
-```python
-# 第一步：计算 token 0 的 K, V
-past_kv = compute_kv(token_0)  # 缓存起来
-
-# 第二步：只计算 token 1 的 K, V
-new_kv = compute_kv(token_1)
-full_kv = concat(past_kv, new_kv)  # ✅ 复用历史，节省计算
-
-# 第三步：只计算 token 2 的 K, V
-new_kv = compute_kv(token_2)
-full_kv = concat(full_kv, new_kv)  # ✅ 继续复用
-```
-
-**优势**：
-- ✅ 每步只计算 1 个新 token 的 K/V
-- ✅ 复用历史 token 的 K/V
-- ✅ 节省**计算时间**和**显存**
+**阶段一成果**：成功验证MLA相比标准注意力可节省 **34.4%** KV-cache显存。
 
 ---
 
-**当前的模拟 KV-cache**（已实现）：
+### 阶段二：真正的KV-cache（推理加速）✅
+
+**更新日期**: 2025-10-28  
+**状态**: ✅ 已完整实现
+
+**目的**：实现真正的推理加速和显存优化，支持生产环境使用
+
+#### 已实现功能（阶段二）
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| **Cache基础设施** | ✅ 已实现 | `DynamicCache`, `StaticCache`, `MLACache` 三种Cache类型 |
+| **底层注意力层支持** | ✅ 已实现 | `MultiHeadAttention` 完整支持 `past_key_value` 和 `use_cache` |
+| **上层模型传递** | ✅ 已实现 | `Transformer`/`Encoder`/`Decoder`/各Layer 完整支持 KV-cache 参数传递 |
+| **计算复用** | ✅ 已实现 | Prefill阶段运行一次encoder，Decode阶段逐token复用历史KV |
+| **真正的推理加速** | ✅ 已实现 | 节省计算时间和显存，长序列提速2-5x |
+| **显存计算** | ✅ 已实现 | `KVCacheTracker` 可准确计算理论显存占用 |
+| **对比测试** | ✅ 已实现 | 可对比 MLA vs 标准注意力的显存差异 |
+| **性能对比测试** | ✅ 已实现 | `compare_kv_cache_mla.py` 真正cache vs 模拟cache对比 |
+
+#### 特性支持（阶段二）
+
+| 特性 | 支持情况 |
+|------|----------|
+| **标准注意力** | ✅ 完全支持 |
+| **MLA (Multi-head Latent Attention)** | ✅ 完全支持（压缩KV格式） |
+| **RoPE位置编码** | ✅ 完全支持 |
+| **MoE (Mixture of Experts)** | ✅ 完全支持 |
+| **训练模式** | ✅ 支持（use_cache=False） |
+| **推理模式** | ✅ 支持（use_cache=True） |
+| **批量推理** | ✅ 支持 |
+
+#### 重要说明：模型兼容性
+
+**✅ 无需重新训练！** 
+
+使用阶段一代码训练的模型（如 `checkpoints/mid_e1_s222.pt`）可以直接用于阶段二的KV-cache推理：
+
+- ✅ 模型权重完全兼容
+- ✅ KV-cache只是推理优化，不改变模型参数
+- ✅ 训练时的行为（use_cache=False）与之前完全一样
+- ✅ 只需加载checkpoint，使用新的推理脚本即可
+
+**原因**：
+- KV-cache是**推理时的计算优化**，不是模型结构的改变
+- 添加的`use_cache`参数默认为False，保持向后兼容
+- 训练代码的修改只是为了接口统一，实际行为未变
+
+## 使用示例
+
+### 基本使用
+
 ```python
-# 第一步：计算 token 0 的 K, V
-kv = compute_kv([token_0])
+from inference.compare_kv_cache_mla import KVCacheInferenceEngine, load_model_and_tokenizers
 
-# 第二步：重新计算 token 0-1 的 K, V（全部重算）
-kv = compute_kv([token_0, token_1])  # ❌ 没有复用
+# 加载模型
+model, pt_tokenizer, en_tokenizer = load_model_and_tokenizers(
+    checkpoint_path="checkpoints/mid_e1_s222.pt",
+    use_mla=True,  # 使用MLA模型
+    device="cuda"
+)
 
-# 第三步：重新计算 token 0-2 的 K, V（全部重算）
-kv = compute_kv([token_0, token_1, token_2])  # ❌ 没有复用
+# 创建推理引擎
+engine = KVCacheInferenceEngine(model, pt_tokenizer, en_tokenizer, device="cuda")
+
+# 使用真正的KV-cache生成
+result = engine.generate_with_kv_cache(
+    input_text="O Tom está procurando uma opinião médica.",
+    max_new_tokens=64,
+    use_real_cache=True  # True=真正的cache，False=模拟cache
+)
+
+print(f"输出: {result['output']}")
+print(f"速度: {result['tokens_per_second']:.2f} tokens/s")
+print(f"KV-cache显存: {result['total_cache_memory_mb']:.2f} MB")
 ```
 
-**现状**：
-- ❌ 每步重新计算整个序列的 K/V
-- ✅ 但通过 `KVCacheTracker` **理论计算** KV-cache 应该占用的显存
-- ✅ 用于对比 MLA vs 标准注意力的**显存占用差异**（34.4% 节省）
+### 性能对比测试
 
-#### 为什么 encoder_cache 和 decoder_cache 没被用到？
+```bash
+# 单模型测试：对比真实KV-cache vs 模拟KV-cache
+python inference/compare_kv_cache_mla.py \
+    --mla_checkpoint checkpoints/mid_e1_s222.pt \
+    --test_lengths 64 128
 
-在 `compare_kv_cache_mla.py` 第 180-184 行：
-```python
-# 编码器的KV-cache（只需要计算一次）
-encoder_cache = None
-
-# 解码器的KV-cache（每步更新）
-decoder_cache = None
+# MLA vs 标准注意力对比
+python inference/compare_kv_cache_mla.py \
+    --mla_checkpoint checkpoints/mid_e1_s222.pt \
+    --no_mla_checkpoint checkpoints_no_mla/mid_e1_s222.pt \
+    --test_lengths 64
 ```
 
-这些变量是**预留的**，但因为：
-1. `Transformer.forward()` 不接受 `past_key_value` 参数（第 1236 行）
-2. `Decoder.forward()` 不接受 `past_key_value` 参数（第 1157 行）
-3. `DecoderLayer.forward()` 未传递 KV-cache 到注意力层
+### Cache类型选择
 
-所以这些变量无法使用，当前只能通过 `KVCacheTracker` 计算理论显存。
+**DynamicCache** - 推荐用于推理：
+```python
+from core.models.kv_cache import DynamicCache
 
-#### 实现真正 KV-cache 的改动范围
+cache = DynamicCache()
+# 自动增长，使用简单，适合大多数推理场景
+```
 
-要实现真正的 KV-cache 推理加速，需要修改：
+**StaticCache** - 用于torch.compile优化：
+```python
+from core.models.kv_cache import StaticCache
 
-1. **Transformer.forward()**：添加 `past_key_values` 参数
-2. **Decoder.forward()**：添加并传递 `past_key_values`
-3. **DecoderLayer.forward()**：传递 KV-cache 到注意力层
-4. **生成循环**：每步只输入新 token，复用历史 cache
+cache = StaticCache(
+    num_layers=8,
+    num_heads=8,
+    head_dim=64,
+    max_batch_size=4,
+    max_cache_len=512,
+    device="cuda",
+    dtype=torch.bfloat16
+)
+# 预分配显存，支持torch.compile，速度最快
+```
 
-**当前实现的目的**：**测量和对比 MLA 的显存节省效果**（34.4%），而非推理加速。
+**MLACache** - MLA模型专用：
+```python
+from core.models.kv_cache import MLACache
+
+cache = MLACache(
+    num_layers=8,
+    kv_lora_rank=128,
+    qk_rope_head_dim=32,
+    num_heads=8,
+    v_head_dim=64,
+    dynamic=True  # 或 False (静态模式)
+)
+# 压缩格式，节省34%显存
+```
 
 ---
 
@@ -218,5 +286,10 @@ CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
 
 ## 相关文档
 
-- **计算公式详解**: `doc/files/inference/KV-cache存储量计算.md`
-- **精度说明**: `doc/files/inference/精度统一说明.md`
+本文档所在位置：`doc/files/inference/KV-cache实现指南.md`
+
+同一目录下的相关文档：
+- [README](README.md) - 📖 文档索引和导航
+- [KV-cache使用教程](KV-cache使用教程.md) - 📚 详细的使用指南（推荐先看）
+- [KV-cache存储量计算](KV-cache存储量计算.md) - 🧮 显存占用计算公式详解
+- [精度统一说明](精度统一说明.md) - 🎯 bf16/fp16精度说明

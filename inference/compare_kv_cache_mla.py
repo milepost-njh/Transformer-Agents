@@ -161,9 +161,18 @@ class KVCacheInferenceEngine:
             skip_special_tokens=True
         )
     
-    def generate_with_kv_cache(self, input_text: str, max_new_tokens: int = 64) -> Dict:
-        """使用KV-cache进行自回归生成"""
+    def generate_with_kv_cache(self, input_text: str, max_new_tokens: int = 64, 
+                              use_real_cache: bool = True) -> Dict:
+        """
+        使用KV-cache进行自回归生成
+        
+        Args:
+            input_text: 输入文本
+            max_new_tokens: 最大生成token数
+            use_real_cache: 是否使用真正的KV-cache（True）还是模拟cache（False）
+        """
         start_time = time.time()
+        self.model.eval()
         
         # 编码输入
         encoder_input = self.encode_input(input_text)
@@ -174,76 +183,154 @@ class KVCacheInferenceEngine:
         decoder_input = torch.tensor([[start_id]], dtype=torch.long, device=self.device)
         
         generated_tokens = []
-        gpu_memory_usage = []
         step_times = []
         
-        # 编码器的KV-cache（只需要计算一次）
-        encoder_cache = None
-        
-        # 解码器的KV-cache（每步更新）
-        decoder_cache = None
-        
         with torch.no_grad():
-            for step in range(max_new_tokens):
-                step_start = time.time()
-                
-                # 记录GPU内存
-                if torch.cuda.is_available():
-                    gpu_memory_usage.append(get_gpu_memory())
-                
-                # 记录KV-cache大小
-                current_seq_len = decoder_input.size(1)
-                cache_size = self.kv_tracker.record_step(current_seq_len)
-                
-                # 创建masks
-                enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
+            if use_real_cache:
+                # ====== 真正的KV-cache实现 ======
+                # Prefill阶段：运行encoder一次，生成encoder cache
+                enc_pad_mask, _, _ = create_masks(
                     encoder_input, decoder_input,
                     src_pad_id=self.pt_tokenizer.pad_token_id,
                     tgt_pad_id=self.en_tokenizer.pad_token_id,
                 )
-                enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, decoder_input.size(1), -1)
                 
-                # 前向传播（这里我们的模型还不支持真正的KV-cache，但可以模拟）
-                model_output = self.model(
-                    encoder_input, decoder_input,
+                # Encoder只运行一次（prefill）
+                enc_output = self.model.encoder_model(
+                    encoder_input, 
                     src_mask=enc_pad_mask,
-                    tgt_mask=dec_mask,
-                    enc_dec_mask=enc_dec_mask
+                    use_cache=True
                 )
                 
-                # 处理输出
-                if isinstance(model_output, tuple) and len(model_output) == 4:
-                    logits, attn, router_logits, mtp_logits = model_output
-                elif isinstance(model_output, tuple) and len(model_output) == 3:
-                    logits, attn, router_logits = model_output
+                # 处理encoder输出
+                if isinstance(enc_output, tuple):
+                    if len(enc_output) == 3:
+                        encoder_outputs, _, encoder_cache = enc_output
+                    else:
+                        encoder_outputs, encoder_cache = enc_output
                 else:
-                    logits, attn = model_output
+                    encoder_outputs = enc_output
+                    encoder_cache = None
                 
-                # 取最后一个token的logits
-                next_token_logits = logits[:, -1, :]
-                next_token_id = torch.argmax(next_token_logits, dim=-1)
+                # KV-cache: {"encoder": encoder_cache, "decoder": decoder_cache}
+                past_key_values = {"encoder": encoder_cache, "decoder": None}
                 
-                step_time = time.time() - step_start
-                step_times.append(step_time)
-                
-                # 检查是否结束
-                if next_token_id.item() == end_id:
-                    break
-                
-                # 添加到生成序列
-                generated_tokens.append(next_token_id.item())
-                decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
+                # Decode阶段：逐token生成
+                for step in range(max_new_tokens):
+                    step_start = time.time()
+                    
+                    # 记录KV-cache大小
+                    current_seq_len = decoder_input.size(1)
+                    cache_size = self.kv_tracker.record_step(current_seq_len)
+                    
+                    # 创建masks（只需要decoder的mask）
+                    _, dec_mask, enc_dec_pad_mask = create_masks(
+                        encoder_input, decoder_input,
+                        src_pad_id=self.pt_tokenizer.pad_token_id,
+                        tgt_pad_id=self.en_tokenizer.pad_token_id,
+                    )
+                    enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, decoder_input.size(1), -1)
+                    
+                    # 第一步：完整输入；后续步骤：只输入最后一个token
+                    if step == 0:
+                        # 第一步：输入完整的start token
+                        current_decoder_input = decoder_input
+                    else:
+                        # 后续步骤：只输入最后一个token，复用cache
+                        current_decoder_input = decoder_input[:, -1:]
+                        # 调整mask维度
+                        dec_mask = dec_mask[:, :, -1:, :]
+                        enc_dec_mask = enc_dec_mask[:, :, -1:, :]
+                    
+                    # 前向传播（使用真正的KV-cache）
+                    model_output = self.model(
+                        None,  # encoder_input不需要了，复用encoder_outputs
+                        current_decoder_input,
+                        src_mask=None,  # encoder不再运行
+                        tgt_mask=dec_mask,
+                        enc_dec_mask=enc_dec_mask,
+                        past_key_values=past_key_values,
+                        use_cache=True,
+                        encoder_outputs=encoder_outputs  # 复用encoder输出
+                    )
+                    
+                    # 处理输出
+                    if len(model_output) == 4:
+                        logits, attn, present_key_values, router_logits = model_output
+                    elif len(model_output) == 3:
+                        logits, attn, present_key_values = model_output
+                    else:
+                        raise ValueError("Unexpected model output format")
+                    
+                    # 更新cache
+                    past_key_values = present_key_values
+                    
+                    # 取最后一个token的logits
+                    next_token_logits = logits[:, -1, :]
+                    next_token_id = torch.argmax(next_token_logits, dim=-1)
+                    
+                    step_time = time.time() - step_start
+                    step_times.append(step_time)
+                    
+                    # 检查是否结束
+                    if next_token_id.item() == end_id:
+                        break
+                    
+                    # 添加到生成序列
+                    generated_tokens.append(next_token_id.item())
+                    decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
+            else:
+                # ====== 模拟KV-cache（旧实现，用于对比） ======
+                for step in range(max_new_tokens):
+                    step_start = time.time()
+                    
+                    # 记录KV-cache大小
+                    current_seq_len = decoder_input.size(1)
+                    cache_size = self.kv_tracker.record_step(current_seq_len)
+                    
+                    # 创建masks
+                    enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
+                        encoder_input, decoder_input,
+                        src_pad_id=self.pt_tokenizer.pad_token_id,
+                        tgt_pad_id=self.en_tokenizer.pad_token_id,
+                    )
+                    enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, decoder_input.size(1), -1)
+                    
+                    # 前向传播（每步重新计算整个序列）
+                    model_output = self.model(
+                        encoder_input, decoder_input,
+                        src_mask=enc_pad_mask,
+                        tgt_mask=dec_mask,
+                        enc_dec_mask=enc_dec_mask
+                    )
+                    
+                    # 处理输出
+                    if isinstance(model_output, tuple) and len(model_output) >= 2:
+                        logits, attn = model_output[0], model_output[1]
+                    else:
+                        raise ValueError("Unexpected model output format")
+                    
+                    # 取最后一个token的logits
+                    next_token_logits = logits[:, -1, :]
+                    next_token_id = torch.argmax(next_token_logits, dim=-1)
+                    
+                    step_time = time.time() - step_start
+                    step_times.append(step_time)
+                    
+                    # 检查是否结束
+                    if next_token_id.item() == end_id:
+                        break
+                    
+                    # 添加到生成序列
+                    generated_tokens.append(next_token_id.item())
+                    decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
         
         generation_time = time.time() - start_time
         
         return {
-            'input': input_text,
             'output': self.decode_output(generated_tokens),
-            'tokens': generated_tokens,
             'generation_time': generation_time,
             'avg_step_time': sum(step_times) / len(step_times) if step_times else 0,
-            'avg_gpu_memory': sum(gpu_memory_usage) / len(gpu_memory_usage) if gpu_memory_usage else 0,
-            'peak_gpu_memory': max(gpu_memory_usage) if gpu_memory_usage else 0,
             'num_tokens_generated': len(generated_tokens),
             'kv_cache_sizes': self.kv_tracker.cache_sizes,
             'max_kv_cache_size': max(self.kv_tracker.cache_sizes) if self.kv_tracker.cache_sizes else 0,
@@ -356,24 +443,33 @@ def load_model_and_tokenizers(checkpoint_path: str, use_mla: bool, device: str):
 
 
 def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str, 
-                   max_new_tokens: int, device: str) -> Dict:
-    """对单个模型进行基准测试"""
+                   max_new_tokens: int, device: str, use_real_cache: bool = True) -> Dict:
+    """
+    对单个模型进行基准测试
+    
+    Args:
+        checkpoint_path: 模型checkpoint路径
+        use_mla: 是否使用MLA
+        test_input: 测试输入文本
+        max_new_tokens: 最大生成token数
+        device: 设备
+        use_real_cache: 是否使用真正的KV-cache（False=模拟cache）
+    """
+    cache_type = "真实KV-cache" if use_real_cache else "模拟KV-cache"
     model_name = "MLA" if use_mla else "Standard"
     logger.info(f"\n{'='*60}")
-    logger.info(f"测试 {model_name} 模型 (生成 {max_new_tokens} tokens)")
+    logger.info(f"测试 {model_name} 模型 ({cache_type}, 生成 {max_new_tokens} tokens)")
     logger.info(f"{'='*60}")
     
     # 清理内存
     clear_memory()
-    initial_gpu_memory = get_gpu_memory()
     
     # 加载模型
     model, pt_tokenizer, en_tokenizer, config = load_model_and_tokenizers(
         checkpoint_path, use_mla, device
     )
     
-    model_gpu_memory = get_gpu_memory()
-    logger.info(f"模型加载完成，GPU内存: {model_gpu_memory:.1f} MB")
+    logger.info(f"模型加载完成，GPU内存: {get_gpu_memory():.1f} MB")
     
     # 创建推理引擎
     engine = KVCacheInferenceEngine(
@@ -381,26 +477,17 @@ def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str,
     )
     
     # 执行生成
-    result = engine.generate_with_kv_cache(test_input, max_new_tokens)
-    
-    final_gpu_memory = get_gpu_memory()
+    result = engine.generate_with_kv_cache(test_input, max_new_tokens, use_real_cache=use_real_cache)
     
     # 打印关键结果
     logger.info(f"\n生成: {result['num_tokens_generated']} tokens | 时间: {result['generation_time']:.3f}s | KV-cache: {result['max_kv_cache_size']:.2f} MB")
     
     return {
         'model_name': model_name,
-        'use_mla': use_mla,
         'generation_time': result['generation_time'],
-        'avg_step_time': result['avg_step_time'],
-        'output_length': result['num_tokens_generated'],
-        'initial_gpu_memory': initial_gpu_memory,
-        'model_gpu_memory': model_gpu_memory,
-        'final_gpu_memory': final_gpu_memory,
         'max_kv_cache_size': result['max_kv_cache_size'],
-        'final_kv_cache_size': result['final_kv_cache_size'],
-        'kv_cache_sizes': result['kv_cache_sizes'],
         'output': result['output'],
+        'kv_cache_sizes': result['kv_cache_sizes'],
         'step_times': result['step_times']
     }
 
