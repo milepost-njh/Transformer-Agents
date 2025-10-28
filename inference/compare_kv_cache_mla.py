@@ -188,6 +188,8 @@ class KVCacheInferenceEngine:
         with torch.no_grad():
             if use_real_cache:
                 # ====== 真正的KV-cache实现 ======
+                logger.info(f"  [真正Cache] 开始生成（Prefill + Decode两阶段）")
+                
                 # Prefill阶段：运行encoder一次，生成encoder cache
                 enc_pad_mask, _, _ = create_masks(
                     encoder_input, decoder_input,
@@ -196,11 +198,13 @@ class KVCacheInferenceEngine:
                 )
                 
                 # Encoder只运行一次（prefill）
+                logger.info(f"  [Prefill阶段] Encoder输入长度: {encoder_input.size(1)} tokens")
                 enc_output = self.model.encoder_model(
                     encoder_input, 
                     src_mask=enc_pad_mask,
                     use_cache=True
                 )
+                logger.info(f"  [Prefill阶段] Encoder运行完成，后续将复用encoder输出")
                 
                 # 处理encoder输出
                 if isinstance(enc_output, tuple):
@@ -217,6 +221,7 @@ class KVCacheInferenceEngine:
                 past_key_values = {"encoder": None, "decoder": None}
                 
                 # Decode阶段：逐token生成
+                logger.info(f"  [Decode阶段] 开始逐token生成，目标生成 {max_new_tokens} tokens")
                 for step in range(max_new_tokens):
                     step_start = time.time()
                     
@@ -236,9 +241,13 @@ class KVCacheInferenceEngine:
                     if step == 0:
                         # 第一步：输入完整的start token
                         current_decoder_input = decoder_input
+                        if step % 20 == 0:
+                            logger.info(f"    Step {step}: Decoder输入长度={current_decoder_input.size(1)} | 累积序列长度={decoder_input.size(1)}")
                     else:
                         # 后续步骤：只输入最后一个token，复用cache
                         current_decoder_input = decoder_input[:, -1:]
+                        if step % 20 == 0:
+                            logger.info(f"    Step {step}: Decoder输入长度={current_decoder_input.size(1)} ✅仅1个token | 累积序列长度={decoder_input.size(1)} | KV-cache: {cache_size:.2f}MB")
                         # 调整mask维度
                         dec_mask = dec_mask[:, :, -1:, :]
                         enc_dec_mask = enc_dec_mask[:, :, -1:, :]
@@ -282,12 +291,16 @@ class KVCacheInferenceEngine:
                     decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
             else:
                 # ====== 模拟KV-cache（旧实现，用于对比） ======
+                logger.info(f"  [模拟Cache] 开始生成（每步重算整个序列）")
                 for step in range(max_new_tokens):
                     step_start = time.time()
                     
                     # 记录KV-cache大小
                     current_seq_len = decoder_input.size(1)
                     cache_size = self.kv_tracker.record_step(current_seq_len)
+                    
+                    if step % 20 == 0:
+                        logger.info(f"    Step {step}: Encoder输入长度={encoder_input.size(1)} | Decoder输入长度={decoder_input.size(1)} ❌每步重算")
                     
                     # 创建masks
                     enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
@@ -540,11 +553,14 @@ def main():
         logger.error(f"❌ MLA checkpoint not found: {args.mla_checkpoint}")
         return
     
-    if not os.path.exists(args.no_mla_checkpoint):
-        logger.error(f"❌ Standard checkpoint not found: {args.no_mla_checkpoint}")
-        return
+    # 判断测试模式
+    test_both_models = os.path.exists(args.no_mla_checkpoint)
     
-    logger.info(f"\n🚀 MLA vs Standard KV-cache 对比")
+    if test_both_models:
+        logger.info(f"\n🚀 模式：MLA vs Standard 对比")
+    else:
+        logger.info(f"\n🚀 模式：真正KV-cache vs 模拟KV-cache 对比")
+    
     logger.info(f"{'='*60}")
     
     all_results = []
@@ -554,28 +570,61 @@ def main():
         logger.info(f"测试: {max_new_tokens} tokens")
         logger.info(f"{'='*60}")
         
-        # 测试MLA模型
-        mla_result = benchmark_model(
-            args.mla_checkpoint, True, args.test_input, max_new_tokens, device
-        )
-        all_results.append(mla_result)
-        
-        # 清理内存
-        clear_memory()
-        time.sleep(1)
-        
-        # 测试标准模型
-        standard_result = benchmark_model(
-            args.no_mla_checkpoint, False, args.test_input, max_new_tokens, device
-        )
-        all_results.append(standard_result)
-        
-        # 对比结果
-        compare_results(mla_result, standard_result)
-        
-        # 清理内存
-        clear_memory()
-        time.sleep(1)
+        if test_both_models:
+            # 测试MLA模型
+            mla_result = benchmark_model(
+                args.mla_checkpoint, True, args.test_input, max_new_tokens, device
+            )
+            all_results.append(mla_result)
+            
+            # 清理内存
+            clear_memory()
+            time.sleep(1)
+            
+            # 测试标准模型
+            standard_result = benchmark_model(
+                args.no_mla_checkpoint, False, args.test_input, max_new_tokens, device
+            )
+            all_results.append(standard_result)
+            
+            # 对比结果
+            compare_results(mla_result, standard_result)
+            
+            # 清理内存
+            clear_memory()
+            time.sleep(1)
+        else:
+            # 只有一个模型：对比真正cache vs 模拟cache
+            logger.info("\n[1/2] 测试真正的KV-cache")
+            real_cache_result = benchmark_model(
+                args.mla_checkpoint, True, args.test_input, max_new_tokens, device, use_real_cache=True
+            )
+            all_results.append(real_cache_result)
+            
+            # 清理内存
+            clear_memory()
+            time.sleep(1)
+            
+            logger.info("\n[2/2] 测试模拟KV-cache（每步重算）")
+            simulated_cache_result = benchmark_model(
+                args.mla_checkpoint, True, args.test_input, max_new_tokens, device, use_real_cache=False
+            )
+            all_results.append(simulated_cache_result)
+            
+            # 对比真正cache vs 模拟cache
+            logger.info(f"\n{'='*60}")
+            logger.info("📊 真正Cache vs 模拟Cache 对比结果")
+            logger.info(f"{'='*60}")
+            
+            speedup = simulated_cache_result['generation_time'] / real_cache_result['generation_time']
+            logger.info(f"\n⚡ 加速比: {speedup:.2f}x")
+            logger.info(f"💾 真正Cache显存: {real_cache_result['max_kv_cache_size']:.2f} MB")
+            logger.info(f"⏱️  真正Cache时间: {real_cache_result['generation_time']:.3f}s vs 模拟Cache时间: {simulated_cache_result['generation_time']:.3f}s")
+            logger.info(f"\n✅ 真正的KV-cache比模拟cache快 {speedup:.2f}倍！")
+            
+            # 清理内存
+            clear_memory()
+            time.sleep(1)
     
     # 保存结果
     if args.output:
