@@ -613,14 +613,21 @@ def main():
             
             # 对比真正cache vs 模拟cache
             logger.info(f"\n{'='*60}")
-            logger.info("📊 真正Cache vs 模拟Cache 对比结果")
+            logger.info("📊 真正Cache vs 不用Cache 对比结果")
             logger.info(f"{'='*60}")
             
             speedup = simulated_cache_result['generation_time'] / real_cache_result['generation_time']
-            logger.info(f"\n⚡ 加速比: {speedup:.2f}x")
-            logger.info(f"💾 真正Cache显存: {real_cache_result['max_kv_cache_size']:.2f} MB")
-            logger.info(f"⏱️  真正Cache时间: {real_cache_result['generation_time']:.3f}s vs 模拟Cache时间: {simulated_cache_result['generation_time']:.3f}s")
-            logger.info(f"\n✅ 真正的KV-cache比模拟cache快 {speedup:.2f}倍！")
+            
+            logger.info(f"\n🔍 关键区别：")
+            logger.info(f"  真正Cache: Encoder运行1次 | Decoder每步输入1个token | 复用历史K/V")
+            logger.info(f"  不用Cache: Encoder每步运行 | Decoder每步输入完整序列 | 重新计算所有K/V")
+            logger.info(f"\n📈 性能对比：")
+            logger.info(f"  ⚡ 加速比: {speedup:.2f}x")
+            logger.info(f"  💾 KV-cache显存: {real_cache_result['max_kv_cache_size']:.2f} MB")
+            logger.info(f"  ⏱️  真正Cache: {real_cache_result['generation_time']:.3f}s")
+            logger.info(f"  🐌 不用Cache: {simulated_cache_result['generation_time']:.3f}s")
+            logger.info(f"\n✅ 真正的KV-cache通过缓存历史K/V，避免重复计算，实现 {speedup:.2f}倍加速！")
+            logger.info(f"   计算量: O(n) vs O(n²)  其中n={max_new_tokens}")
             
             # 清理内存
             clear_memory()
