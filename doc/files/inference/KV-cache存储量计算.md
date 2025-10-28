@@ -89,6 +89,36 @@ L × (d_kv_compressed + d_rope + H × v_head_dim)
 - d_rope = 32 (= d_h / 2)
 - H × v_head_dim = 8 × 64 = 512
 
+#### 1.2.2.1 MLA 参数设置说明（低秩分解设计）
+
+MLA 通过**低秩分解（LoRA）**压缩 KV-Cache，关键设置来自 DeepSeek-V3 最佳实践：
+
+**1) `kv_lora_rank = d_model // 4`（KV 低秩维度）**
+
+| 项目 | 说明 |
+|------|------|
+| **设置** | `128 = 512 // 4` |
+| **含义** | K 通过低秩投影，维度从 512 压缩到 128 |
+| **优势** | 节省 **75% 的 K-cache** 显存（512 → 128） |
+| **原理** | 低秩分解能有效捕捉 K 的主要信息，无需全维度存储 |
+
+**2) `qk_nope_head_dim = head_dim // 2`（内容维度）**
+
+| 项目 | 说明 |
+|------|------|
+| **设置** | `32 = 64 // 2` |
+| **含义** | Q 和 K 分成两部分：内容(nope)和位置(rope)各占一半 |
+| **分解** | Q/K 头维度 = nope(32) + rope(32) = 64 |
+| **作用** | nope 处理语义特征，rope 处理位置信息，解耦两个维度 |
+
+**综合效果**：
+
+```
+KV-Cache 结构 = (kv_lora_rank + qk_rope_head_dim + H×v_head_dim) × L × S
+              = (128 + 32 + 512) × 8 × S
+              ≈ 0.66 MB (S=64)  // 相比标准注意力的 1.00 MB 节省 34.4%
+```
+
 ### 1.2.3 单token的KV-Cache数据元素个数和显存占用
 
 **KV-Cache数据元素个数** (公式):
@@ -174,6 +204,16 @@ $$
 $$
 
 ### 1.5.2 实验验证
+
+运行 KV-cache 对比测试:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
+    --mla_checkpoint checkpoints/mid_e1_s222.pt \
+    --no_mla_checkpoint checkpoints_no_mla/mid_e1_s222.pt \
+    --test_lengths 64
+     # --test_lengths 128
+```
 
 #### 1.5.2.1 log日志（128tokens）
 
