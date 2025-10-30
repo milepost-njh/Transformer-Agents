@@ -140,6 +140,24 @@ class KVCacheInferenceEngine:
             v_head_dim=head_dim if use_mla else None
         )
     
+    def _log_token_generation(self, step: int, token_id: int, token_text: str, 
+                             cumulative_text: str, step_time: float):
+        """
+        打印token生成信息的辅助函数
+        
+        Args:
+            step: 当前步骤编号
+            token_id: token ID
+            token_text: token对应的文本
+            cumulative_text: 累积生成的文本
+            step_time: 生成该token的耗时（秒）
+        """
+        logger.info(
+            f"    🔤 Token {step+1}: ID={token_id:5d} | "
+            f"文本='{token_text}' | 累积='{cumulative_text}' | "
+            f"耗时={step_time*1000:.1f}ms"
+        )
+    
     def encode_input(self, text: str) -> torch.Tensor:
         """编码输入文本"""
         def encode_with_bos_eos(tokenizer, text: str):
@@ -162,7 +180,7 @@ class KVCacheInferenceEngine:
         )
     
     def generate_with_kv_cache(self, input_text: str, max_new_tokens: int = 64, 
-                              use_real_cache: bool = True, verbose_tokens: bool = True) -> Dict:
+                              use_real_cache: bool = True, verbose_tokens: bool = False) -> Dict:
         """
         使用KV-cache进行自回归生成
         
@@ -296,10 +314,10 @@ class KVCacheInferenceEngine:
                     token_text = self.en_tokenizer.decode([token_id], skip_special_tokens=False)
                     generated_texts.append(token_text)
                     
-                    # 实时打印生成的token
+                    # 实时打印生成的token（如果开启）
                     if verbose_tokens:
                         cumulative_text = ''.join(generated_texts)
-                        logger.info(f"    🔤 Token {step+1}: ID={token_id:5d} | 文本='{token_text}' | 累积='{cumulative_text}' | 耗时={step_time*1000:.1f}ms")
+                        self._log_token_generation(step, token_id, token_text, cumulative_text, step_time)
                     
                     decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
             else:
@@ -356,10 +374,10 @@ class KVCacheInferenceEngine:
                     token_text = self.en_tokenizer.decode([token_id], skip_special_tokens=False)
                     generated_texts.append(token_text)
                     
-                    # 实时打印生成的token
+                    # 实时打印生成的token（如果开启）
                     if verbose_tokens:
                         cumulative_text = ''.join(generated_texts)
-                        logger.info(f"    🔤 Token {step+1}: ID={token_id:5d} | 文本='{token_text}' | 累积='{cumulative_text}' | 耗时={step_time*1000:.1f}ms")
+                        self._log_token_generation(step, token_id, token_text, cumulative_text, step_time)
                     
                     decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
         
@@ -483,7 +501,8 @@ def load_model_and_tokenizers(checkpoint_path: str, use_mla: bool, device: str):
 
 
 def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str, 
-                   max_new_tokens: int, device: str, use_real_cache: bool = True) -> Dict:
+                   max_new_tokens: int, device: str, use_real_cache: bool = True,
+                   verbose_tokens: bool = False) -> Dict:
     """
     对单个模型进行基准测试
     
@@ -517,7 +536,7 @@ def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str,
     )
     
     # 执行生成
-    result = engine.generate_with_kv_cache(test_input, max_new_tokens, use_real_cache=use_real_cache)
+    result = engine.generate_with_kv_cache(test_input, max_new_tokens, use_real_cache=use_real_cache, verbose_tokens=verbose_tokens)
     
     # 打印关键结果
     logger.info(f"\n生成: {result['num_tokens_generated']} tokens | 时间: {result['generation_time']:.3f}s | KV-cache: {result['max_kv_cache_size']:.2f} MB")
@@ -567,6 +586,8 @@ def main():
                        help="设备 (cuda/cpu)")
     parser.add_argument("--output", type=str, default=None,
                        help="输出JSON文件路径")
+    parser.add_argument("--verbose_tokens", action="store_true",
+                       help="是否详细打印每个生成的token（默认关闭）")
     
     args = parser.parse_args()
     
@@ -599,7 +620,8 @@ def main():
         if test_both_models:
             # 测试MLA模型
             mla_result = benchmark_model(
-                args.mla_checkpoint, True, args.test_input, max_new_tokens, device
+                args.mla_checkpoint, True, args.test_input, max_new_tokens, device,
+                verbose_tokens=args.verbose_tokens
             )
             all_results.append(mla_result)
             
@@ -609,7 +631,8 @@ def main():
             
             # 测试标准模型
             standard_result = benchmark_model(
-                args.no_mla_checkpoint, False, args.test_input, max_new_tokens, device
+                args.no_mla_checkpoint, False, args.test_input, max_new_tokens, device,
+                verbose_tokens=args.verbose_tokens
             )
             all_results.append(standard_result)
             
@@ -623,7 +646,8 @@ def main():
             # 只有一个模型：对比真正cache vs 模拟cache
             logger.info("\n[1/2] 测试真正的KV-cache")
             real_cache_result = benchmark_model(
-                args.mla_checkpoint, True, args.test_input, max_new_tokens, device, use_real_cache=True
+                args.mla_checkpoint, True, args.test_input, max_new_tokens, device, 
+                use_real_cache=True, verbose_tokens=args.verbose_tokens
             )
             all_results.append(real_cache_result)
             
@@ -633,7 +657,8 @@ def main():
             
             logger.info("\n[2/2] 测试模拟KV-cache（每步重算）")
             simulated_cache_result = benchmark_model(
-                args.mla_checkpoint, True, args.test_input, max_new_tokens, device, use_real_cache=False
+                args.mla_checkpoint, True, args.test_input, max_new_tokens, device, 
+                use_real_cache=False, verbose_tokens=args.verbose_tokens
             )
             all_results.append(simulated_cache_result)
             
