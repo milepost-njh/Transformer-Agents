@@ -162,7 +162,7 @@ class KVCacheInferenceEngine:
         )
     
     def generate_with_kv_cache(self, input_text: str, max_new_tokens: int = 64, 
-                              use_real_cache: bool = True) -> Dict:
+                              use_real_cache: bool = True, verbose_tokens: bool = True) -> Dict:
         """
         使用KV-cache进行自回归生成
         
@@ -170,6 +170,7 @@ class KVCacheInferenceEngine:
             input_text: 输入文本
             max_new_tokens: 最大生成token数
             use_real_cache: 是否使用真正的KV-cache（True）还是模拟cache（False）
+            verbose_tokens: 是否详细打印每个生成的token
         """
         start_time = time.time()
         self.model.eval()
@@ -183,6 +184,7 @@ class KVCacheInferenceEngine:
         decoder_input = torch.tensor([[start_id]], dtype=torch.long, device=self.device)
         
         generated_tokens = []
+        generated_texts = []  # 记录每个token的文本
         step_times = []
         
         with torch.no_grad():
@@ -287,7 +289,18 @@ class KVCacheInferenceEngine:
                         break
                     
                     # 添加到生成序列
-                    generated_tokens.append(next_token_id.item())
+                    token_id = next_token_id.item()
+                    generated_tokens.append(token_id)
+                    
+                    # 解码当前token的文本
+                    token_text = self.en_tokenizer.decode([token_id], skip_special_tokens=False)
+                    generated_texts.append(token_text)
+                    
+                    # 实时打印生成的token
+                    if verbose_tokens:
+                        cumulative_text = ''.join(generated_texts)
+                        logger.info(f"    🔤 Token {step+1}: ID={token_id:5d} | 文本='{token_text}' | 累积='{cumulative_text}' | 耗时={step_time*1000:.1f}ms")
+                    
                     decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
             else:
                 # ====== 模拟KV-cache（旧实现，用于对比） ======
@@ -336,7 +349,18 @@ class KVCacheInferenceEngine:
                         break
                     
                     # 添加到生成序列
-                    generated_tokens.append(next_token_id.item())
+                    token_id = next_token_id.item()
+                    generated_tokens.append(token_id)
+                    
+                    # 解码当前token的文本
+                    token_text = self.en_tokenizer.decode([token_id], skip_special_tokens=False)
+                    generated_texts.append(token_text)
+                    
+                    # 实时打印生成的token
+                    if verbose_tokens:
+                        cumulative_text = ''.join(generated_texts)
+                        logger.info(f"    🔤 Token {step+1}: ID={token_id:5d} | 文本='{token_text}' | 累积='{cumulative_text}' | 耗时={step_time*1000:.1f}ms")
+                    
                     decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
         
         generation_time = time.time() - start_time
@@ -349,7 +373,9 @@ class KVCacheInferenceEngine:
             'kv_cache_sizes': self.kv_tracker.cache_sizes,
             'max_kv_cache_size': max(self.kv_tracker.cache_sizes) if self.kv_tracker.cache_sizes else 0,
             'final_kv_cache_size': self.kv_tracker.cache_sizes[-1] if self.kv_tracker.cache_sizes else 0,
-            'step_times': step_times
+            'step_times': step_times,
+            'generated_tokens': generated_tokens,
+            'generated_texts': generated_texts
         }
 
 
@@ -628,6 +654,45 @@ def main():
             logger.info(f"  🐌 不用Cache: {simulated_cache_result['generation_time']:.3f}s")
             logger.info(f"\n✅ 真正的KV-cache通过缓存历史K/V，避免重复计算，实现 {speedup:.2f}倍加速！")
             logger.info(f"   计算量: O(n) vs O(n²)  其中n={max_new_tokens}")
+            
+            # 对比生成的token差异
+            logger.info(f"\n{'='*60}")
+            logger.info("🔤 Token输出对比")
+            logger.info(f"{'='*60}")
+            
+            real_tokens = real_cache_result.get('generated_tokens', [])
+            sim_tokens = simulated_cache_result.get('generated_tokens', [])
+            real_texts = real_cache_result.get('generated_texts', [])
+            sim_texts = simulated_cache_result.get('generated_texts', [])
+            
+            # 检查输出是否一致
+            if real_tokens == sim_tokens:
+                logger.info("✅ 两种方法生成的token序列完全一致！")
+                logger.info(f"📝 最终输出: {real_cache_result['output']}")
+            else:
+                logger.warning("⚠️ 两种方法生成的token序列存在差异！")
+                logger.info(f"\n真正Cache输出 ({len(real_tokens)} tokens): {real_cache_result['output']}")
+                logger.info(f"模拟Cache输出 ({len(sim_tokens)} tokens): {simulated_cache_result['output']}")
+                
+                # 详细对比差异
+                logger.info(f"\n逐token对比：")
+                max_len = max(len(real_tokens), len(sim_tokens))
+                diff_count = 0
+                for i in range(max_len):
+                    real_token = real_tokens[i] if i < len(real_tokens) else None
+                    sim_token = sim_tokens[i] if i < len(sim_tokens) else None
+                    real_text = real_texts[i] if i < len(real_texts) else ""
+                    sim_text = sim_texts[i] if i < len(sim_texts) else ""
+                    
+                    if real_token != sim_token:
+                        diff_count += 1
+                        status = "❌"
+                    else:
+                        status = "✅"
+                    
+                    logger.info(f"  {status} Token {i+1}: 真实={real_token}('{real_text}') | 模拟={sim_token}('{sim_text}')")
+                
+                logger.info(f"\n差异统计: {diff_count}/{max_len} tokens不同")
             
             # 清理内存
             clear_memory()
