@@ -94,7 +94,6 @@ Thumbs.db
 data/
 datasets/
 *.csv
-*.json
 *.jsonl
 *.txt
 *.tsv
