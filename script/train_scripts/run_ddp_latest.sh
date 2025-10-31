@@ -20,16 +20,16 @@ export NCCL_DEBUG=${NCCL_DEBUG:-WARN}
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
 
 # 后台运行，日志写入文件
-LOG_FILE=logs/train_ddp_kimi_$(date +%Y%m%d_%H%M%S).log
+LOG_FILE=logs/train_ddp_$(date +%Y%m%d_%H%M%S).log
 (
   set -x
   torchrun --standalone --nproc_per_node="${NPROC}" \
-    train_tmp.py --use_kimi "$@"
+    train_tmp.py "$@"
 ) >"${LOG_FILE}" 2>&1 &
 
 PID=$!
 echo
-echo "训练进程已启动 (DDP, nproc=${NPROC}, use_kimi=True), PID: ${PID}"
+echo "训练进程已启动 (DDP, nproc=${NPROC}), PID: ${PID}"
 echo "日志: ${LOG_FILE}"
 echo "实时查看: tail -f ${LOG_FILE}"
 echo "停止训练: kill ${PID}"

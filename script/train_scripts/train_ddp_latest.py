@@ -32,23 +32,6 @@ from core.normalization import RMSNorm, LayerNorm
 from training.parallel.config import ParallelConfig, ParallelMode
 from training.parallel.factory import create_backend
 
-# Kimi模型导入
-from core.models.kimi_linear.modeling_kimi import (
-    KimiLinearForCausalLM,
-    KimiLinearModel,
-    KimiDynamicCache,
-    KimiRMSNorm,
-    KimiMLAAttention,
-    KimiDeltaAttention,
-    KimiMoEGate,
-    KimiSparseMoeBlock,
-    KimiDecoderLayer,
-    KimiPreTrainedModel,
-    KimiMLP,
-    KimiBlockSparseMLP
-)
-from core.models.kimi_linear.configuration_kimi import KimiLinearConfig
-
 # 多卡训练设置（DDP 通过后端统一管理）
 import torch.distributed as dist
 
@@ -345,13 +328,9 @@ def build_dataloaders(
         gpu_count: int = 1,
         train_sampler=None,
         val_sampler=None,
-        use_kimi: bool = False,  # 新增参数：是否使用Kimi因果语言模型
 ):
     """
-    构建训练和验证 DataLoader
-    
-    如果 use_kimi=True，只使用目标语言(英语)进行因果语言模型训练
-    如果 use_kimi=False，使用源语言-目标语言对进行seq2seq训练
+    构建训练和验证 DataLoader（等价 TF 的 filter_by_max_length + padded_batch）
 
     参数:
         train_dataset: HuggingFace Dataset (训练集)
@@ -364,7 +343,6 @@ def build_dataloaders(
         shuffle_train: 是否打乱训练集
         use_multi_gpu: 是否使用多卡训练
         gpu_count: GPU数量
-        use_kimi: 是否使用Kimi因果语言模型模式
 
     返回:
         train_loader, val_loader
@@ -387,139 +365,72 @@ def build_dataloaders(
             raise ValueError("请确保 tokenizer 设置了 bos_token/eos_token")
         return [bos_id] + ids + [eos_id]
 
-    if use_kimi:
-        # Kimi因果语言模型模式：只使用英语文本
-        def build_filtered_sequences(hf_split, tokenizer, max_len: int):
-            sequences = []
-            for ex in hf_split:
-                # 只使用英语文本
-                ids = encode_with_bos_eos(tokenizer, ex["en"])
-                if len(ids) <= max_len:
-                    sequences.append(ids)
-            return sequences
+    # 2) 构造已过滤的样本对
+    def build_filtered_pairs(hf_split, pt_tok, en_tok, max_len: int):
+        pairs = []
+        for ex in hf_split:
+            pt_ids = encode_with_bos_eos(pt_tok, ex["pt"])
+            en_ids = encode_with_bos_eos(en_tok, ex["en"])
+            if len(pt_ids) <= max_len and len(en_ids) <= max_len:
+                pairs.append((pt_ids, en_ids))
+        return pairs
 
-        train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
-        val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
+    train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
+    val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
 
-        # Dataset 类（单一序列）
-        class SequenceDataset(Dataset):
-            def __init__(self, sequences): 
-                self.sequences = sequences
+    # 3) Dataset 类
+    class PairsDataset(Dataset):
+        def __init__(self, pairs): self.pairs = pairs
 
-            def __len__(self): 
-                return len(self.sequences)
+        def __len__(self): return len(self.pairs)
 
-            def __getitem__(self, idx):
-                return {"input_ids": self.sequences[idx]}
+        def __getitem__(self, idx):
+            pt_ids, en_ids = self.pairs[idx]
+            return {"pt_input_ids": pt_ids, "en_input_ids": en_ids}
 
-        # Collate 函数（动态 padding，单一序列）
-        def collate_padded_sequences(batch, pad_id: int):
-            def pad_block(seqs, pad_value):
-                max_len = max(len(s) for s in seqs)
-                out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
-                attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
-                for i, s in enumerate(seqs):
-                    L = len(s)
-                    out[i, :L] = torch.tensor(s, dtype=torch.long)
-                    attn[i, :L] = 1
-                return out, attn
+    # 4) Collate 函数（动态 padding）
+    def collate_padded(batch, pad_id_pt: int, pad_id_en: int):
+        def pad_block(seqs, pad_value):
+            max_len = max(len(s) for s in seqs)
+            out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
+            attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
+            for i, s in enumerate(seqs):
+                L = len(s)
+                out[i, :L] = torch.tensor(s, dtype=torch.long)
+                attn[i, :L] = 1
+            return out, attn
 
-            ids_list = [ex["input_ids"] for ex in batch]
-            input_ids, attention_mask = pad_block(ids_list, pad_id)
+        pt_ids_list = [ex["pt_input_ids"] for ex in batch]
+        en_ids_list = [ex["en_input_ids"] for ex in batch]
+        pt_input_ids, pt_attention_mask = pad_block(pt_ids_list, pt_tokenizer.pad_token_id)
+        en_input_ids, en_attention_mask = pad_block(en_ids_list, en_tokenizer.pad_token_id)
 
-            return {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-            }
+        return {
+            "pt_input_ids": pt_input_ids,
+            "pt_attention_mask": pt_attention_mask,
+            "en_input_ids": en_input_ids,
+            "en_attention_mask": en_attention_mask,
+        }
 
-        # DataLoader
-        train_loader = DataLoader(
-            SequenceDataset(train_sequences),
-            batch_size=effective_batch_size,
-            shuffle=(train_sampler is None and shuffle_train),
-            sampler=train_sampler,
-            collate_fn=lambda b: collate_padded_sequences(b, en_tokenizer.pad_token_id),
-            num_workers=effective_num_workers,
-            pin_memory=True if torch.cuda.is_available() else False,
-        )
-        val_loader = DataLoader(
-            SequenceDataset(val_sequences),
-            batch_size=effective_batch_size,
-            shuffle=False if val_sampler is not None else False,
-            sampler=val_sampler,
-            collate_fn=lambda b: collate_padded_sequences(b, en_tokenizer.pad_token_id),
-            num_workers=effective_num_workers,
-            pin_memory=True if torch.cuda.is_available() else False,
-        )
-        
-    else:
-        # 原有的seq2seq模式
-        # 2) 构造已过滤的样本对
-        def build_filtered_pairs(hf_split, pt_tok, en_tok, max_len: int):
-            pairs = []
-            for ex in hf_split:
-                pt_ids = encode_with_bos_eos(pt_tok, ex["pt"])
-                en_ids = encode_with_bos_eos(en_tok, ex["en"])
-                if len(pt_ids) <= max_len and len(en_ids) <= max_len:
-                    pairs.append((pt_ids, en_ids))
-            return pairs
-
-        train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
-        val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
-
-        # 3) Dataset 类
-        class PairsDataset(Dataset):
-            def __init__(self, pairs): self.pairs = pairs
-
-            def __len__(self): return len(self.pairs)
-
-            def __getitem__(self, idx):
-                pt_ids, en_ids = self.pairs[idx]
-                return {"pt_input_ids": pt_ids, "en_input_ids": en_ids}
-
-        # 4) Collate 函数（动态 padding）
-        def collate_padded(batch, pad_id_pt: int, pad_id_en: int):
-            def pad_block(seqs, pad_value):
-                max_len = max(len(s) for s in seqs)
-                out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
-                attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
-                for i, s in enumerate(seqs):
-                    L = len(s)
-                    out[i, :L] = torch.tensor(s, dtype=torch.long)
-                    attn[i, :L] = 1
-                return out, attn
-
-            pt_ids_list = [ex["pt_input_ids"] for ex in batch]
-            en_ids_list = [ex["en_input_ids"] for ex in batch]
-            pt_input_ids, pt_attention_mask = pad_block(pt_ids_list, pt_tokenizer.pad_token_id)
-            en_input_ids, en_attention_mask = pad_block(en_ids_list, en_tokenizer.pad_token_id)
-
-            return {
-                "pt_input_ids": pt_input_ids,
-                "pt_attention_mask": pt_attention_mask,
-                "en_input_ids": en_input_ids,
-                "en_attention_mask": en_attention_mask,
-            }
-
-        # 5) DataLoader
-        train_loader = DataLoader(
-            PairsDataset(train_pairs),
-            batch_size=effective_batch_size,
-            shuffle=(train_sampler is None and shuffle_train),
-            sampler=train_sampler,
-            collate_fn=lambda b: collate_padded(b, pt_tokenizer.pad_token_id, en_tokenizer.pad_token_id),
-            num_workers=effective_num_workers,
-            pin_memory=True if torch.cuda.is_available() else False,
-        )
-        val_loader = DataLoader(
-            PairsDataset(val_pairs),
-            batch_size=effective_batch_size,
-            shuffle=False if val_sampler is not None else False,
-            sampler=val_sampler,
-            collate_fn=lambda b: collate_padded(b, pt_tokenizer.pad_token_id, en_tokenizer.pad_token_id),
-            num_workers=effective_num_workers,
-            pin_memory=True if torch.cuda.is_available() else False,
-        )
+    # 5) DataLoader
+    train_loader = DataLoader(
+        PairsDataset(train_pairs),
+        batch_size=effective_batch_size,
+        shuffle=(train_sampler is None and shuffle_train),
+        sampler=train_sampler,
+        collate_fn=lambda b: collate_padded(b, pt_tokenizer.pad_token_id, en_tokenizer.pad_token_id),
+        num_workers=effective_num_workers,
+        pin_memory=True if torch.cuda.is_available() else False,
+    )
+    val_loader = DataLoader(
+        PairsDataset(val_pairs),
+        batch_size=effective_batch_size,
+        shuffle=False if val_sampler is not None else False,
+        sampler=val_sampler,
+        collate_fn=lambda b: collate_padded(b, pt_tokenizer.pad_token_id, en_tokenizer.pad_token_id),
+        num_workers=effective_num_workers,
+        pin_memory=True if torch.cuda.is_available() else False,
+    )
 
     return train_loader, val_loader
 
@@ -1762,12 +1673,9 @@ class AverageMeter:
     def avg(self): return self.sum / max(1, self.n)
 
 
-def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, mtp_config=None, use_kimi=False):
+def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, mtp_config=None):
     """
     训练单步
-    
-    如果 use_kimi=True，使用因果语言模型训练方式
-    如果 use_kimi=False，使用seq2seq训练方式
     
     注意：训练时不使用KV-cache（use_cache默认为False）
     原因：
@@ -1779,6 +1687,24 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         device = "cuda" if torch.cuda.is_available() else "cpu"
     transformer.train()
 
+    # 只在必要时清理GPU缓存（减少频率以提高性能）
+    # if torch.cuda.is_available():
+    #     torch.cuda.empty_cache()
+
+    inp = batch["pt_input_ids"].to(device)
+    tar = batch["en_input_ids"].to(device)
+
+    tar_inp = tar[:, :-1]
+    tar_real = tar[:, 1:]
+
+    SRC_PAD_ID = pt_tokenizer.pad_token_id
+    TGT_PAD_ID = en_tokenizer.pad_token_id
+
+    enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
+        inp, tar_inp, src_pad_id=SRC_PAD_ID, tgt_pad_id=TGT_PAD_ID
+    )
+    enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
+
     # 使用 PyTorch SDPA + bf16 autocast（L20 支持bf16）
     use_autocast = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     if use_autocast:
@@ -1787,73 +1713,33 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         from contextlib import nullcontext
         autocast_ctx = nullcontext()
 
-    if use_kimi:
-        # Kimi因果语言模型模式
-        input_ids = batch["input_ids"].to(device)
-        attention_mask = batch["attention_mask"].to(device)
-        
-        # 因果LM：输入是完整序列，labels是向右移位的序列
-        # input_ids: [BOS, tok1, tok2, ..., tokN, EOS]
-        # labels:    [tok1, tok2, ..., tokN, EOS, -100]
-        labels = input_ids.clone()
-        labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
-        
-        with autocast_ctx:
-            # Kimi模型的forward接口
-            outputs = transformer(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels,
-                use_cache=False,
-            )
-        
-        # Kimi模型返回 CausalLMOutputWithPast，包含loss
-        if hasattr(outputs, 'loss') and outputs.loss is not None:
-            loss = outputs.loss
-        else:
-            # 手动计算损失（如果模型没有返回loss）
-            logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-            loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=mtp_config)
-        
-        logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-        
-    else:
-        # 原有的seq2seq模式
-        inp = batch["pt_input_ids"].to(device)
-        tar = batch["en_input_ids"].to(device)
-
-        tar_inp = tar[:, :-1]
-        tar_real = tar[:, 1:]
-
-        SRC_PAD_ID = pt_tokenizer.pad_token_id
-        TGT_PAD_ID = en_tokenizer.pad_token_id
-
-        enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
-            inp, tar_inp, src_pad_id=SRC_PAD_ID, tgt_pad_id=TGT_PAD_ID
+    with autocast_ctx:
+        # 训练时不使用KV-cache（use_cache=False是默认值，这里不显式传递）
+        # 原因：训练有完整序列，可以并行计算，无需缓存历史K/V
+        # KV-cache只在推理的自回归生成时才有用
+        transformer_output = transformer(
+            inp, tar_inp,
+            src_mask=enc_pad_mask,
+            tgt_mask=dec_mask,
+            enc_dec_mask=enc_dec_mask
+            # use_cache=False  # 默认值，不需要显式写
         )
-        enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
 
-        with autocast_ctx:
-            transformer_output = transformer(
-                inp, tar_inp,
-                src_mask=enc_pad_mask,
-                tgt_mask=dec_mask,
-                enc_dec_mask=enc_dec_mask
-            )
+    # 处理 MoE 和 MTP 输出
+    if isinstance(transformer_output, tuple) and len(transformer_output) == 4:
+        # MTP 模式：logits, attention_weights, router_logits, mtp_logits
+        logits, _, router_logits, mtp_logits = transformer_output
+    elif isinstance(transformer_output, tuple) and len(transformer_output) == 3:
+        # MoE 模式：logits, attention_weights, router_logits
+        logits, _, router_logits = transformer_output
+        mtp_logits = None
+    else:
+        # 标准模式：logits, attention_weights
+        logits, _ = transformer_output
+        router_logits = None
+        mtp_logits = None
 
-        # 处理 MoE 和 MTP 输出
-        if isinstance(transformer_output, tuple) and len(transformer_output) == 4:
-            logits, _, router_logits, mtp_logits = transformer_output
-        elif isinstance(transformer_output, tuple) and len(transformer_output) == 3:
-            logits, _, router_logits = transformer_output
-            mtp_logits = None
-        else:
-            logits, _ = transformer_output
-            router_logits = None
-            mtp_logits = None
-
-        loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config, mtp_logits=mtp_logits, mtp_config=mtp_config)
-        labels = tar_real
+    loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config, mtp_logits=mtp_logits, mtp_config=mtp_config)
 
     # 检测NaN或Inf损失
     if not torch.isfinite(loss):
@@ -1864,16 +1750,19 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     loss.backward()
 
     # 改进的梯度裁剪策略
+    # 1. 先计算梯度范数
+    # 对于DataParallel包装的模型，需要访问module属性
     model_for_grad_clip = transformer.module if use_multi_gpu else transformer
     grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.5)
 
-    # 更严格的梯度监控
+    # 2. 更严格的梯度监控
     if grad_norm > 5.0:
         logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
+        # 如果梯度范数过大，进一步裁剪
         torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.1)
         logger.warning(f"Applied additional gradient clipping to 0.1")
 
-    # 检查是否有NaN梯度
+    # 3. 检查是否有NaN梯度
     has_nan_grad = False
     for name, param in model_for_grad_clip.named_parameters():
         if param.grad is not None and torch.isnan(param.grad).any():
@@ -1889,9 +1778,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     if scheduler is not None:
         scheduler.step()
 
-    # 计算准确率
-    PAD_ID = en_tokenizer.pad_token_id if not use_kimi else en_tokenizer.pad_token_id
-    acc = token_accuracy(labels, logits, pad_id=PAD_ID)
+    acc = token_accuracy(tar_real, logits, pad_id=TGT_PAD_ID)
     return loss.item(), acc
 
 
@@ -1910,7 +1797,6 @@ def train_model(
         moe_config=None,
         use_multi_gpu: bool = False,
         mtp_config=None,
-        use_kimi: bool = False,
 ):
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(tensorboard_dir, exist_ok=True)
@@ -1937,7 +1823,7 @@ def train_model(
             for batch_idx, batch in enumerate(train_loader):
                 loss_val, acc_val = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
-                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, mtp_config=mtp_config, use_kimi=use_kimi
+                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, mtp_config=mtp_config
                 )
                 train_loss_meter.update(loss_val, 1)
                 train_acc_meter.update(acc_val, 1)
@@ -2005,7 +1891,7 @@ def train_model(
             logger.info(f"Time taken for 1 epoch: {time.time() - start:.2f} secs\n")
 
             # 每个epoch结束后进行验证集评测
-            validate_loss, validate_acc = evaluate_on_val(model, val_loader, device, moe_config=moe_config, mtp_config=mtp_config, use_kimi=use_kimi)
+            validate_loss, validate_acc = evaluate_on_val(model, val_loader, device, moe_config=moe_config, mtp_config=mtp_config)
 
             # 记录验证指标到 TensorBoard
             writer.add_scalar('Epoch/Validation_Loss', validate_loss, epoch + 1)
@@ -2128,78 +2014,51 @@ def evaluate(
 
 
 @torch.no_grad()
-def evaluate_on_val(model, val_loader, device, moe_config=None, mtp_config=None, use_kimi=False):
+def evaluate_on_val(model, val_loader, device, moe_config=None, mtp_config=None):
     model.eval()
     total_loss = 0
     total_acc = 0
     total_count = 0
 
     for batch in val_loader:
-        if use_kimi:
-            # Kimi因果语言模型模式
-            input_ids = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            
-            labels = input_ids.clone()
-            labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
-            
-            outputs = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels,
-                use_cache=False,
-            )
-            
-            if hasattr(outputs, 'loss') and outputs.loss is not None:
-                loss = outputs.loss
-            else:
-                logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-                loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=mtp_config)
-            
-            logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-            acc = token_accuracy(labels, logits, pad_id=en_tokenizer.pad_token_id)
-            
-            total_loss += loss.item() * input_ids.size(0)
-            total_acc += acc * input_ids.size(0)
-            total_count += input_ids.size(0)
-            
+        inp = batch["pt_input_ids"].to(device)
+        tar = batch["en_input_ids"].to(device)
+
+        tar_inp = tar[:, :-1]
+        tar_real = tar[:, 1:]
+
+        enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
+            inp, tar_inp, src_pad_id=pt_tokenizer.pad_token_id, tgt_pad_id=en_tokenizer.pad_token_id
+        )
+        enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
+
+        model_output = model(
+            inp, tar_inp,
+            src_mask=enc_pad_mask,
+            tgt_mask=dec_mask,
+            enc_dec_mask=enc_dec_mask
+        )
+
+        # 处理不同模式的输出
+        if isinstance(model_output, tuple) and len(model_output) == 4:
+            # MTP 模式：logits, attention_weights, router_logits, mtp_logits
+            logits, _, router_logits, mtp_logits = model_output
+        elif isinstance(model_output, tuple) and len(model_output) == 3:
+            # MoE 模式：logits, attention_weights, router_logits
+            logits, _, router_logits = model_output
+            mtp_logits = None
         else:
-            # 原有的seq2seq模式
-            inp = batch["pt_input_ids"].to(device)
-            tar = batch["en_input_ids"].to(device)
+            # 标准模式：logits, attention_weights
+            logits, _ = model_output
+            router_logits = None
+            mtp_logits = None
 
-            tar_inp = tar[:, :-1]
-            tar_real = tar[:, 1:]
+        loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config, mtp_logits=mtp_logits, mtp_config=mtp_config)
+        acc = token_accuracy(tar_real, logits, pad_id=en_tokenizer.pad_token_id)
 
-            enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
-                inp, tar_inp, src_pad_id=pt_tokenizer.pad_token_id, tgt_pad_id=en_tokenizer.pad_token_id
-            )
-            enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
-
-            model_output = model(
-                inp, tar_inp,
-                src_mask=enc_pad_mask,
-                tgt_mask=dec_mask,
-                enc_dec_mask=enc_dec_mask
-            )
-
-            # 处理不同模式的输出
-            if isinstance(model_output, tuple) and len(model_output) == 4:
-                logits, _, router_logits, mtp_logits = model_output
-            elif isinstance(model_output, tuple) and len(model_output) == 3:
-                logits, _, router_logits = model_output
-                mtp_logits = None
-            else:
-                logits, _ = model_output
-                router_logits = None
-                mtp_logits = None
-
-            loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config, mtp_logits=mtp_logits, mtp_config=mtp_config)
-            acc = token_accuracy(tar_real, logits, pad_id=en_tokenizer.pad_token_id)
-
-            total_loss += loss.item() * inp.size(0)
-            total_acc += acc * inp.size(0)
-            total_count += inp.size(0)
+        total_loss += loss.item() * inp.size(0)
+        total_acc += acc * inp.size(0)
+        total_count += inp.size(0)
 
     avg_loss = total_loss / total_count
     avg_acc = total_acc / total_count
@@ -2359,18 +2218,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Transformer Training Script")
     parser.add_argument("--no_mla", action="store_true", 
                        help="Disable MLA (default: MLA enabled)")
-    parser.add_argument("--use_kimi", action="store_true",
-                       help="Use Kimi causal language model instead of seq2seq Transformer")
     
     args = parser.parse_args()
     
     # 处理参数逻辑
-    use_kimi = args.use_kimi  # 是否使用Kimi模型
-    use_mla = not args.no_mla if not use_kimi else True  # Kimi模型默认使用MLA
-    use_mtp = True if not use_kimi else False  # MTP仅用于自定义Transformer
+    use_mla = not args.no_mla  # 默认启用MLA，除非指定--no_mla
+    use_mtp = True  # MTP固定启用
     
     logger.info(f"🚀 Training Configuration:")
-    logger.info(f"   - Model: {'Kimi Causal LM' if use_kimi else 'Seq2Seq Transformer'}")
     logger.info(f"   - MLA (Multi-head Latent Attention): {use_mla}")
     logger.info(f"   - MTP (Multi-Token Prediction): {use_mtp}")
     logger.info(f"   - MoE: True (fixed)")
@@ -2382,10 +2237,8 @@ if __name__ == "__main__":
     val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
     
-    # 根据模型类型设置不同的checkpoint目录
-    if use_kimi:
-        checkpoint_dir = 'checkpoints_kimi'
-    elif use_mla:
+    # 根据是否使用MLA设置不同的checkpoint目录
+    if use_mla:
         checkpoint_dir = 'checkpoints'
     else:
         checkpoint_dir = 'checkpoints_no_mla'
@@ -2471,120 +2324,71 @@ if __name__ == "__main__":
     input_vocab_size = pt_tokenizer.vocab_size
     target_vocab_size = en_tokenizer.vocab_size
 
-    if use_kimi:
-        # 使用 Kimi 因果语言模型
-        head_dim = d_model // num_heads
+    # 4. 构建模型
+    model = Transformer(
+        num_layers=num_layers,
+        input_vocab_size=input_vocab_size,
+        target_vocab_size=target_vocab_size,
+        max_length=max_length,
+        d_model=d_model,
+        num_heads=num_heads,
+        dff=dff,
+        rate=dropout_rate,
+        src_padding_idx=pt_tokenizer.pad_token_id if hasattr(pt_tokenizer, "pad_token_id") else None,
+        tgt_padding_idx=en_tokenizer.pad_token_id if hasattr(en_tokenizer, "pad_token_id") else None,
+        use_rope=True,
+        use_moe=use_moe,
+        moe_config=moe_config,
+        use_mla=use_mla,
+        q_lora_rank=q_lora_rank,
+        kv_lora_rank=kv_lora_rank,
+    )
+
+    # 权重初始化
+    def init_weights(module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.xavier_uniform_(module.weight, gain=0.8)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        elif isinstance(module, RMSNorm):
+            torch.nn.init.ones_(module.weight)
+
+    model.apply(init_weights)
+    logger.info("✅ 标准 Transformer 模型初始化完成")
+    
+    # MTP 集成（可选）
+    # use_mtp 已在命令行参数中定义
+    
+    if use_mtp:
+        from core.models.deepseek_mtp import DeepSeekMTPConfig, add_mtp_to_transformer
         
-        # 配置 Kimi 模型
-        kimi_config = KimiLinearConfig(
-            vocab_size=target_vocab_size,
+        # 创建 MTP 配置
+        mtp_config = DeepSeekMTPConfig(
             hidden_size=d_model,
-            head_dim=head_dim,
-            intermediate_size=dff,
-            num_hidden_layers=num_layers,
-            num_attention_heads=num_heads,
-            num_key_value_heads=num_heads,  # 使用MQA/GQA时可以减少
-            hidden_act="silu",
-            initializer_range=0.02,
-            rms_norm_eps=1e-6,
-            use_cache=False,  # 训练时不使用cache
-            pad_token_id=en_tokenizer.pad_token_id,
-            bos_token_id=en_tokenizer.bos_token_id,
-            eos_token_id=en_tokenizer.eos_token_id,
-            rope_theta=10000.0,
-            tie_word_embeddings=False,
-            # MoE 配置
-            num_experts=moe_config.num_experts if use_moe else None,
-            num_experts_per_token=moe_config.num_experts_per_tok if use_moe else None,
-            moe_intermediate_size=moe_config.moe_intermediate_size if use_moe else None,
-            moe_renormalize=True,
-            moe_router_activation_func="sigmoid",
-            num_shared_experts=moe_config.n_shared_experts if use_moe else 0,
-            routed_scaling_factor=moe_config.routed_scaling_factor if use_moe else 1.0,
-            first_k_dense_replace=0,
-            moe_layer_freq=1,
-            use_grouped_topk=True,
-            num_expert_group=moe_config.n_group if use_moe else 1,
-            topk_group=moe_config.topk_group if use_moe else 1,
-            # MLA 配置
-            q_lora_rank=q_lora_rank if use_mla else None,
-            kv_lora_rank=kv_lora_rank if use_mla else None,
-            qk_nope_head_dim=head_dim // 2 if use_mla else None,
-            qk_rope_head_dim=head_dim // 2 if use_mla else None,
-            v_head_dim=head_dim if use_mla else None,
-            mla_use_nope=False,
-        )
-        
-        model = KimiLinearForCausalLM(kimi_config)
-        logger.info("✅ Kimi 因果语言模型初始化完成")
-        mtp_config = None  # Kimi模型不使用MTP
-        
-    else:
-        # 使用原有的 Seq2Seq Transformer
-        model = Transformer(
-            num_layers=num_layers,
-            input_vocab_size=input_vocab_size,
-            target_vocab_size=target_vocab_size,
-            max_length=max_length,
-            d_model=d_model,
-            num_heads=num_heads,
-            dff=dff,
-            rate=dropout_rate,
-            src_padding_idx=pt_tokenizer.pad_token_id if hasattr(pt_tokenizer, "pad_token_id") else None,
-            tgt_padding_idx=en_tokenizer.pad_token_id if hasattr(en_tokenizer, "pad_token_id") else None,
-            use_rope=True,
+            num_nextn_predict_layers=2,  # MTP 预测层数
+            vocab_size=target_vocab_size,
+            max_position_embeddings=max_length,
             use_moe=use_moe,
             moe_config=moe_config,
-            use_mla=use_mla,
-            q_lora_rank=q_lora_rank,
-            kv_lora_rank=kv_lora_rank,
+            mtp_loss_weight=0.1,  # MTP 损失权重
         )
-
-        # 权重初始化
-        def init_weights(module):
-            if isinstance(module, nn.Linear):
-                torch.nn.init.xavier_uniform_(module.weight, gain=0.8)
-                if module.bias is not None:
-                    torch.nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Embedding):
-                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            elif isinstance(module, RMSNorm):
-                torch.nn.init.ones_(module.weight)
-
-        model.apply(init_weights)
-        logger.info("✅ 标准 Transformer 模型初始化完成")
         
-        # MTP 集成（可选）
-        if use_mtp:
-            from core.models.deepseek_mtp import DeepSeekMTPConfig, add_mtp_to_transformer
-            
-            # 创建 MTP 配置
-            mtp_config = DeepSeekMTPConfig(
-                hidden_size=d_model,
-                num_nextn_predict_layers=2,  # MTP 预测层数
-                vocab_size=target_vocab_size,
-                max_position_embeddings=max_length,
-                use_moe=use_moe,
-                moe_config=moe_config,
-                mtp_loss_weight=0.1,  # MTP 损失权重
-            )
-            
-            # 为现有 Transformer 添加 MTP 功能
-            model = add_mtp_to_transformer(model, mtp_config)
-        else:
-            mtp_config = None
+        # 为现有 Transformer 添加 MTP 功能
+        model = add_mtp_to_transformer(model, mtp_config)
 
     # 5. DDP 后端：初始化并包装模型
     p_cfg = ParallelConfig(mode=ParallelMode.ddp)
     backend = create_backend(p_cfg)
     backend.init_dist()
     
-    # 提前构建过滤后的数据（避免在每个进程中重复构建）
+    # 提前构建过滤后的 pairs（避免在每个进程中重复构建）
     # 只在 rank0 打印信息
     if dist.get_rank() == 0:
-        logger.info(f"开始构建过滤后的训练数据{'序列' if use_kimi else '对'}...")
+        logger.info("开始构建过滤后的训练数据对...")
     
-    # 构建过滤后的样本（这部分逻辑从 build_dataloaders 中提取）
+    # 构建过滤后的样本对（这部分逻辑从 build_dataloaders 中提取）
     def encode_with_bos_eos(tokenizer, text: str):
         ids = tokenizer.encode(text, add_special_tokens=False)
         bos_id = tokenizer.bos_token_id
@@ -2593,115 +2397,63 @@ if __name__ == "__main__":
             raise ValueError("请确保 tokenizer 设置了 bos_token/eos_token")
         return [bos_id] + ids + [eos_id]
     
-    if use_kimi:
-        # Kimi因果语言模型模式：只使用英语文本
-        def build_filtered_sequences(hf_split, tokenizer, max_len: int):
-            sequences = []
-            for ex in hf_split:
-                ids = encode_with_bos_eos(tokenizer, ex["en"])
-                if len(ids) <= max_len:
-                    sequences.append(ids)
-            return sequences
+    def build_filtered_pairs(hf_split, pt_tok, en_tok, max_len: int):
+        pairs = []
+        for ex in hf_split:
+            pt_ids = encode_with_bos_eos(pt_tok, ex["pt"])
+            en_ids = encode_with_bos_eos(en_tok, ex["en"])
+            if len(pt_ids) <= max_len and len(en_ids) <= max_len:
+                pairs.append((pt_ids, en_ids))
+        return pairs
+    
+    train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
+    val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
+    
+    if dist.get_rank() == 0:
+        logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
+    
+    # 创建 PairsDataset
+    class PairsDataset(Dataset):
+        def __init__(self, pairs): 
+            self.pairs = pairs
         
-        train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
-        val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
+        def __len__(self): 
+            return len(self.pairs)
         
-        if dist.get_rank() == 0:
-            logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
-        
-        # Dataset 类（单一序列）
-        class SequenceDataset(Dataset):
-            def __init__(self, sequences): 
-                self.sequences = sequences
-
-            def __len__(self): 
-                return len(self.sequences)
-
-            def __getitem__(self, idx):
-                return {"input_ids": self.sequences[idx]}
-        
-        filtered_train_dataset = SequenceDataset(train_sequences)
-        filtered_val_dataset = SequenceDataset(val_sequences)
-        
-        # Collate 函数（单一序列）
-        def collate_padded(batch):
-            def pad_block(seqs, pad_value):
-                max_len = max(len(s) for s in seqs)
-                out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
-                attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
-                for i, s in enumerate(seqs):
-                    L = len(s)
-                    out[i, :L] = torch.tensor(s, dtype=torch.long)
-                    attn[i, :L] = 1
-                return out, attn
-
-            ids_list = [ex["input_ids"] for ex in batch]
-            input_ids, attention_mask = pad_block(ids_list, en_tokenizer.pad_token_id)
-
-            return {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-            }
-    else:
-        # Seq2Seq模式：使用源语言-目标语言对
-        def build_filtered_pairs(hf_split, pt_tok, en_tok, max_len: int):
-            pairs = []
-            for ex in hf_split:
-                pt_ids = encode_with_bos_eos(pt_tok, ex["pt"])
-                en_ids = encode_with_bos_eos(en_tok, ex["en"])
-                if len(pt_ids) <= max_len and len(en_ids) <= max_len:
-                    pairs.append((pt_ids, en_ids))
-            return pairs
-        
-        train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
-        val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
-        
-        if dist.get_rank() == 0:
-            logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
-        
-        # Dataset 类（样本对）
-        class PairsDataset(Dataset):
-            def __init__(self, pairs): 
-                self.pairs = pairs
-            
-            def __len__(self): 
-                return len(self.pairs)
-            
-            def __getitem__(self, idx):
-                pt_ids, en_ids = self.pairs[idx]
-                return {"pt_input_ids": pt_ids, "en_input_ids": en_ids}
-        
-        filtered_train_dataset = PairsDataset(train_pairs)
-        filtered_val_dataset = PairsDataset(val_pairs)
-        
-        # Collate 函数（样本对）
-        def collate_padded(batch):
-            def pad_block(seqs, pad_value):
-                max_len = max(len(s) for s in seqs)
-                out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
-                attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
-                for i, s in enumerate(seqs):
-                    L = len(s)
-                    out[i, :L] = torch.tensor(s, dtype=torch.long)
-                    attn[i, :L] = 1
-                return out, attn
-
-            pt_ids_list = [ex["pt_input_ids"] for ex in batch]
-            en_ids_list = [ex["en_input_ids"] for ex in batch]
-            pt_input_ids, pt_attention_mask = pad_block(pt_ids_list, pt_tokenizer.pad_token_id)
-            en_input_ids, en_attention_mask = pad_block(en_ids_list, en_tokenizer.pad_token_id)
-
-            return {
-                "pt_input_ids": pt_input_ids,
-                "pt_attention_mask": pt_attention_mask,
-                "en_input_ids": en_input_ids,
-                "en_attention_mask": en_attention_mask,
-            }
+        def __getitem__(self, idx):
+            pt_ids, en_ids = self.pairs[idx]
+            return {"pt_input_ids": pt_ids, "en_input_ids": en_ids}
+    
+    filtered_train_dataset = PairsDataset(train_pairs)
+    filtered_val_dataset = PairsDataset(val_pairs)
     
     # 基于过滤后的数据集创建分布式采样器
     train_sampler, val_sampler = backend.get_samplers(filtered_train_dataset, filtered_val_dataset)
     
-    # 创建 DataLoader
+    # 直接创建 DataLoader（使用过滤后的 dataset 和 sampler）
+    def collate_padded(batch):
+        def pad_block(seqs, pad_value):
+            max_len = max(len(s) for s in seqs)
+            out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
+            attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
+            for i, s in enumerate(seqs):
+                L = len(s)
+                out[i, :L] = torch.tensor(s, dtype=torch.long)
+                attn[i, :L] = 1
+            return out, attn
+
+        pt_ids_list = [ex["pt_input_ids"] for ex in batch]
+        en_ids_list = [ex["en_input_ids"] for ex in batch]
+        pt_input_ids, pt_attention_mask = pad_block(pt_ids_list, pt_tokenizer.pad_token_id)
+        en_input_ids, en_attention_mask = pad_block(en_ids_list, en_tokenizer.pad_token_id)
+
+        return {
+            "pt_input_ids": pt_input_ids,
+            "pt_attention_mask": pt_attention_mask,
+            "en_input_ids": en_input_ids,
+            "en_attention_mask": en_attention_mask,
+        }
+    
     effective_batch_size = batch_size * gpu_count
     train_loader2 = DataLoader(
         filtered_train_dataset,
@@ -2773,5 +2525,4 @@ if __name__ == "__main__":
         moe_config=moe_config,  # MoE 配置
         use_multi_gpu=True,  # DDP 多卡训练
         mtp_config=mtp_config if use_mtp else None,  # MTP 配置
-        use_kimi=use_kimi,  # 是否使用Kimi因果语言模型
     )
