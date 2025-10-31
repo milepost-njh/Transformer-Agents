@@ -2471,7 +2471,7 @@ if __name__ == "__main__":
     # 等待 rank 0 完成
     dist.barrier()
     
-    # 所有进程加载已保存的 tokenizer
+    # 其他进程加载已保存的 tokenizer（不加载数据集，后续从缓存加载）
     if dist.get_rank() != 0:
         pt_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_pt/tokenizer.json")
         en_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_en/tokenizer.json")
@@ -2485,9 +2485,6 @@ if __name__ == "__main__":
             tok.mask_token = "<mask>"
             tok.model_max_length = max_length
             tok.padding_side = "right"
-        
-        # 重新加载数据集（但不训练tokenizer）
-        train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
 
     # MLA 配置
     # use_mla 已在命令行参数中定义
@@ -2601,9 +2598,14 @@ if __name__ == "__main__":
         else:
             mtp_config = None
 
-    # 5. 构建过滤后的数据（在所有进程中执行，但有优化）
-    if dist.get_rank() == 0:
-        logger.info(f"开始构建过滤后的训练数据{'序列' if use_kimi else '对'}...")
+    # 5. 构建过滤后的数据（只在 rank 0 构建并保存，其他进程加载）
+    import pickle
+    
+    # 定义数据缓存文件路径
+    cache_dir = "data_cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    train_cache_file = os.path.join(cache_dir, f"train_{'kimi' if use_kimi else 'seq2seq'}.pkl")
+    val_cache_file = os.path.join(cache_dir, f"val_{'kimi' if use_kimi else 'seq2seq'}.pkl")
     
     # 构建过滤后的样本（这部分逻辑从 build_dataloaders 中提取）
     def encode_with_bos_eos(tokenizer, text: str):
@@ -2624,11 +2626,39 @@ if __name__ == "__main__":
                     sequences.append(ids)
             return sequences
         
-        train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
-        val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
-        
+        # 只在 rank 0 构建并保存数据
         if dist.get_rank() == 0:
-            logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+            # 检查缓存是否存在
+            if os.path.exists(train_cache_file) and os.path.exists(val_cache_file):
+                logger.info(f"发现缓存文件，直接加载: {train_cache_file}, {val_cache_file}")
+                with open(train_cache_file, 'rb') as f:
+                    train_sequences = pickle.load(f)
+                with open(val_cache_file, 'rb') as f:
+                    val_sequences = pickle.load(f)
+                logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+            else:
+                logger.info(f"开始构建过滤后的训练数据序列...")
+                train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
+                val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
+                logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+                
+                # 保存到磁盘
+                logger.info(f"保存数据到缓存: {train_cache_file}, {val_cache_file}")
+                with open(train_cache_file, 'wb') as f:
+                    pickle.dump(train_sequences, f)
+                with open(val_cache_file, 'wb') as f:
+                    pickle.dump(val_sequences, f)
+        
+        # 等待 rank 0 保存完成
+        dist.barrier()
+        
+        # 其他进程从磁盘加载
+        if dist.get_rank() != 0:
+            logger.info(f"从缓存加载数据: {train_cache_file}, {val_cache_file}")
+            with open(train_cache_file, 'rb') as f:
+                train_sequences = pickle.load(f)
+            with open(val_cache_file, 'rb') as f:
+                val_sequences = pickle.load(f)
         
         # Dataset 类（单一序列）
         class SequenceDataset(Dataset):
@@ -2674,11 +2704,39 @@ if __name__ == "__main__":
                     pairs.append((pt_ids, en_ids))
             return pairs
         
-        train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
-        val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
-        
+        # 只在 rank 0 构建并保存数据
         if dist.get_rank() == 0:
-            logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
+            # 检查缓存是否存在
+            if os.path.exists(train_cache_file) and os.path.exists(val_cache_file):
+                logger.info(f"发现缓存文件，直接加载: {train_cache_file}, {val_cache_file}")
+                with open(train_cache_file, 'rb') as f:
+                    train_pairs = pickle.load(f)
+                with open(val_cache_file, 'rb') as f:
+                    val_pairs = pickle.load(f)
+                logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
+            else:
+                logger.info(f"开始构建过滤后的训练数据对...")
+                train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
+                val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
+                logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
+                
+                # 保存到磁盘
+                logger.info(f"保存数据到缓存: {train_cache_file}, {val_cache_file}")
+                with open(train_cache_file, 'wb') as f:
+                    pickle.dump(train_pairs, f)
+                with open(val_cache_file, 'wb') as f:
+                    pickle.dump(val_pairs, f)
+        
+        # 等待 rank 0 保存完成
+        dist.barrier()
+        
+        # 其他进程从磁盘加载
+        if dist.get_rank() != 0:
+            logger.info(f"从缓存加载数据: {train_cache_file}, {val_cache_file}")
+            with open(train_cache_file, 'rb') as f:
+                train_pairs = pickle.load(f)
+            with open(val_cache_file, 'rb') as f:
+                val_pairs = pickle.load(f)
         
         # Dataset 类（样本对）
         class PairsDataset(Dataset):
