@@ -2,6 +2,21 @@
 
 import os
 import sys
+
+# ===== 必须在导入其他库之前设置环境变量 =====
+# 设置可见的GPU
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,5,6,7"  # 使用5张GPU
+
+# 禁用TensorFlow（我们只用PyTorch，不需要TensorFlow）
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # 禁用TensorFlow日志
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"  # 禁用TensorFlow oneDNN优化
+os.environ["USE_TF"] = "0"  # 禁用datasets库的TensorFlow后端
+os.environ["USE_TORCH"] = "1"  # 强制使用PyTorch后端
+
+# 其他环境变量
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # 禁用tokenizers并行以避免fork警告
+
+# ===== 现在可以安全导入其他库 =====
 import time
 import math
 import gc
@@ -48,13 +63,6 @@ from core.models.kimi_linear.modeling_kimi import (
     KimiBlockSparseMLP
 )
 from core.models.kimi_linear.configuration_kimi import KimiLinearConfig
-
-# 设置可见的GPU（根据需要修改）
-os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,5,6,7"  # 使用5张GPU
-
-# 修复警告信息
-os.environ["TOKENIZERS_PARALLELISM"] = "false"  # 禁用tokenizers并行以避免fork警告
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"  # 禁用TensorFlow oneDNN优化信息
 
 
 # MoE 配置类
