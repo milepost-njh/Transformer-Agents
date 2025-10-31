@@ -2445,22 +2445,49 @@ if __name__ == "__main__":
     device = check_env()
     device, use_multi_gpu, gpu_count = setup_multi_gpu()
 
-    # 2. 加载数据集
-    train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
-
-    # 3. 构建 Tokenizer
-    pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
-        train_dataset=train_dataset,
-        pt_key="pt",
-        en_key="en",
-        vocab_size=vocab_size,
-        min_freq=min_freq,
-        special_tokens=special_tokens,
-        save_dir_pt="tok_pt",
-        save_dir_en="tok_en",
-        max_length=max_length
-    )
-    test_tokenizers(en_tokenizer=en_tokenizer, pt_tokenizer=pt_tokenizer)
+    # 2. DDP 后端：先初始化（在数据加载之前）
+    p_cfg = ParallelConfig(mode=ParallelMode.ddp)
+    backend = create_backend(p_cfg)
+    backend.init_dist()
+    
+    # 3. 只在 rank 0 加载数据集和训练 tokenizer（避免内存溢出）
+    if dist.get_rank() == 0:
+        logger.info("开始加载数据集和训练tokenizer（仅在rank 0执行）...")
+        train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+        
+        pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
+            train_dataset=train_dataset,
+            pt_key="pt",
+            en_key="en",
+            vocab_size=vocab_size,
+            min_freq=min_freq,
+            special_tokens=special_tokens,
+            save_dir_pt="tok_pt",
+            save_dir_en="tok_en",
+            max_length=max_length
+        )
+        test_tokenizers(en_tokenizer=en_tokenizer, pt_tokenizer=pt_tokenizer)
+    
+    # 等待 rank 0 完成
+    dist.barrier()
+    
+    # 所有进程加载已保存的 tokenizer
+    if dist.get_rank() != 0:
+        pt_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_pt/tokenizer.json")
+        en_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_en/tokenizer.json")
+        
+        # 设置特殊符号
+        for tok in (pt_tokenizer, en_tokenizer):
+            tok.pad_token = "<pad>"
+            tok.unk_token = "<unk>"
+            tok.bos_token = "<s>"
+            tok.eos_token = "</s>"
+            tok.mask_token = "<mask>"
+            tok.model_max_length = max_length
+            tok.padding_side = "right"
+        
+        # 重新加载数据集（但不训练tokenizer）
+        train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
 
     # MLA 配置
     # use_mla 已在命令行参数中定义
@@ -2574,13 +2601,7 @@ if __name__ == "__main__":
         else:
             mtp_config = None
 
-    # 5. DDP 后端：初始化并包装模型
-    p_cfg = ParallelConfig(mode=ParallelMode.ddp)
-    backend = create_backend(p_cfg)
-    backend.init_dist()
-    
-    # 提前构建过滤后的数据（避免在每个进程中重复构建）
-    # 只在 rank0 打印信息
+    # 5. 构建过滤后的数据（在所有进程中执行，但有优化）
     if dist.get_rank() == 0:
         logger.info(f"开始构建过滤后的训练数据{'序列' if use_kimi else '对'}...")
     
