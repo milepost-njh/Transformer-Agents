@@ -4,7 +4,6 @@ import os
 import sys
 import time
 import math
-import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,8 +28,8 @@ from torch.utils.tensorboard import SummaryWriter
 from core.models.modeling_deepseek import DeepseekV3MoE
 from collections import OrderedDict
 from core.normalization import RMSNorm, LayerNorm
-from training.parallel.config import ParallelConfig, ParallelMode
-from training.parallel.factory import create_backend
+from torch.nn.parallel import DataParallel
+import pickle
 
 # Kimi模型导入
 from core.models.kimi_linear.modeling_kimi import (
@@ -49,10 +48,8 @@ from core.models.kimi_linear.modeling_kimi import (
 )
 from core.models.kimi_linear.configuration_kimi import KimiLinearConfig
 
-# 多卡训练设置（DDP 通过后端统一管理）
-import torch.distributed as dist
-
-# 不在代码中强行设置 CUDA_VISIBLE_DEVICES，改由启动脚本/外部环境控制
+# 设置可见的GPU（根据需要修改）
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,5,6,7"  # 使用5张GPU
 
 # 修复警告信息
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # 禁用tokenizers并行以避免fork警告
@@ -335,50 +332,31 @@ def test_tokenizers(en_tokenizer, pt_tokenizer,
 def build_dataloaders(
         train_dataset,
         val_dataset,
-        pt_tokenizer,
         en_tokenizer,
         batch_size: int = 64,
         max_length: int = 48,
         num_workers: int = 0,
         shuffle_train: bool = True,
-        use_multi_gpu: bool = False,
-        gpu_count: int = 1,
-        train_sampler=None,
-        val_sampler=None,
-        use_kimi: bool = False,  # 新增参数：是否使用Kimi因果语言模型
 ):
     """
-    构建训练和验证 DataLoader
+    构建训练和验证 DataLoader（Kimi因果语言模型模式）
     
-    如果 use_kimi=True，只使用目标语言(英语)进行因果语言模型训练
-    如果 use_kimi=False，使用源语言-目标语言对进行seq2seq训练
+    只使用目标语言(英语)进行因果语言模型训练
 
     参数:
         train_dataset: HuggingFace Dataset (训练集)
         val_dataset: HuggingFace Dataset (验证集)
-        pt_tokenizer: 葡语 tokenizer (源语言)
         en_tokenizer: 英语 tokenizer (目标语言)
         batch_size: 批大小
         max_length: 样本最大长度（超过则过滤）
         num_workers: DataLoader worker 数量
         shuffle_train: 是否打乱训练集
-        use_multi_gpu: 是否使用多卡训练
-        gpu_count: GPU数量
-        use_kimi: 是否使用Kimi因果语言模型模式
 
     返回:
         train_loader, val_loader
     """
 
-    # 多卡训练时调整batch size和num_workers
-    if use_multi_gpu and gpu_count > 1:
-        effective_batch_size = batch_size * gpu_count
-        effective_num_workers = min(num_workers * 2, 8)
-    else:
-        effective_batch_size = batch_size
-        effective_num_workers = num_workers
-
-    # 1) 小工具：编码 + 添加 BOS/EOS
+    # 小工具：编码 + 添加 BOS/EOS
     def encode_with_bos_eos(tokenizer, text: str):
         ids = tokenizer.encode(text, add_special_tokens=False)
         bos_id = tokenizer.bos_token_id
@@ -387,139 +365,68 @@ def build_dataloaders(
             raise ValueError("请确保 tokenizer 设置了 bos_token/eos_token")
         return [bos_id] + ids + [eos_id]
 
-    if use_kimi:
-        # Kimi因果语言模型模式：只使用英语文本
-        def build_filtered_sequences(hf_split, tokenizer, max_len: int):
-            sequences = []
-            for ex in hf_split:
-                # 只使用英语文本
-                ids = encode_with_bos_eos(tokenizer, ex["en"])
-                if len(ids) <= max_len:
-                    sequences.append(ids)
-            return sequences
+    # Kimi因果语言模型模式：只使用英语文本
+    def build_filtered_sequences(hf_split, tokenizer, max_len: int):
+        sequences = []
+        for ex in hf_split:
+            ids = encode_with_bos_eos(tokenizer, ex["en"])
+            if len(ids) <= max_len:
+                sequences.append(ids)
+        return sequences
 
-        train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
-        val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
+    train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
+    val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
+    
+    logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
 
-        # Dataset 类（单一序列）
-        class SequenceDataset(Dataset):
-            def __init__(self, sequences): 
-                self.sequences = sequences
+    # Dataset 类（单一序列）
+    class SequenceDataset(Dataset):
+        def __init__(self, sequences): 
+            self.sequences = sequences
 
-            def __len__(self): 
-                return len(self.sequences)
+        def __len__(self): 
+            return len(self.sequences)
 
-            def __getitem__(self, idx):
-                return {"input_ids": self.sequences[idx]}
+        def __getitem__(self, idx):
+            return {"input_ids": self.sequences[idx]}
 
-        # Collate 函数（动态 padding，单一序列）
-        def collate_padded_sequences(batch, pad_id: int):
-            def pad_block(seqs, pad_value):
-                max_len = max(len(s) for s in seqs)
-                out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
-                attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
-                for i, s in enumerate(seqs):
-                    L = len(s)
-                    out[i, :L] = torch.tensor(s, dtype=torch.long)
-                    attn[i, :L] = 1
-                return out, attn
+    # Collate 函数（动态 padding）
+    def collate_padded_sequences(batch, pad_id: int):
+        def pad_block(seqs, pad_value):
+            max_len = max(len(s) for s in seqs)
+            out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
+            attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
+            for i, s in enumerate(seqs):
+                L = len(s)
+                out[i, :L] = torch.tensor(s, dtype=torch.long)
+                attn[i, :L] = 1
+            return out, attn
 
-            ids_list = [ex["input_ids"] for ex in batch]
-            input_ids, attention_mask = pad_block(ids_list, pad_id)
+        ids_list = [ex["input_ids"] for ex in batch]
+        input_ids, attention_mask = pad_block(ids_list, pad_id)
 
-            return {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-            }
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+        }
 
-        # DataLoader
-        train_loader = DataLoader(
-            SequenceDataset(train_sequences),
-            batch_size=effective_batch_size,
-            shuffle=(train_sampler is None and shuffle_train),
-            sampler=train_sampler,
-            collate_fn=lambda b: collate_padded_sequences(b, en_tokenizer.pad_token_id),
-            num_workers=effective_num_workers,
-            pin_memory=True if torch.cuda.is_available() else False,
-        )
-        val_loader = DataLoader(
-            SequenceDataset(val_sequences),
-            batch_size=effective_batch_size,
-            shuffle=False if val_sampler is not None else False,
-            sampler=val_sampler,
-            collate_fn=lambda b: collate_padded_sequences(b, en_tokenizer.pad_token_id),
-            num_workers=effective_num_workers,
-            pin_memory=True if torch.cuda.is_available() else False,
-        )
-        
-    else:
-        # 原有的seq2seq模式
-        # 2) 构造已过滤的样本对
-        def build_filtered_pairs(hf_split, pt_tok, en_tok, max_len: int):
-            pairs = []
-            for ex in hf_split:
-                pt_ids = encode_with_bos_eos(pt_tok, ex["pt"])
-                en_ids = encode_with_bos_eos(en_tok, ex["en"])
-                if len(pt_ids) <= max_len and len(en_ids) <= max_len:
-                    pairs.append((pt_ids, en_ids))
-            return pairs
-
-        train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
-        val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
-
-        # 3) Dataset 类
-        class PairsDataset(Dataset):
-            def __init__(self, pairs): self.pairs = pairs
-
-            def __len__(self): return len(self.pairs)
-
-            def __getitem__(self, idx):
-                pt_ids, en_ids = self.pairs[idx]
-                return {"pt_input_ids": pt_ids, "en_input_ids": en_ids}
-
-        # 4) Collate 函数（动态 padding）
-        def collate_padded(batch, pad_id_pt: int, pad_id_en: int):
-            def pad_block(seqs, pad_value):
-                max_len = max(len(s) for s in seqs)
-                out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
-                attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
-                for i, s in enumerate(seqs):
-                    L = len(s)
-                    out[i, :L] = torch.tensor(s, dtype=torch.long)
-                    attn[i, :L] = 1
-                return out, attn
-
-            pt_ids_list = [ex["pt_input_ids"] for ex in batch]
-            en_ids_list = [ex["en_input_ids"] for ex in batch]
-            pt_input_ids, pt_attention_mask = pad_block(pt_ids_list, pt_tokenizer.pad_token_id)
-            en_input_ids, en_attention_mask = pad_block(en_ids_list, en_tokenizer.pad_token_id)
-
-            return {
-                "pt_input_ids": pt_input_ids,
-                "pt_attention_mask": pt_attention_mask,
-                "en_input_ids": en_input_ids,
-                "en_attention_mask": en_attention_mask,
-            }
-
-        # 5) DataLoader
-        train_loader = DataLoader(
-            PairsDataset(train_pairs),
-            batch_size=effective_batch_size,
-            shuffle=(train_sampler is None and shuffle_train),
-            sampler=train_sampler,
-            collate_fn=lambda b: collate_padded(b, pt_tokenizer.pad_token_id, en_tokenizer.pad_token_id),
-            num_workers=effective_num_workers,
-            pin_memory=True if torch.cuda.is_available() else False,
-        )
-        val_loader = DataLoader(
-            PairsDataset(val_pairs),
-            batch_size=effective_batch_size,
-            shuffle=False if val_sampler is not None else False,
-            sampler=val_sampler,
-            collate_fn=lambda b: collate_padded(b, pt_tokenizer.pad_token_id, en_tokenizer.pad_token_id),
-            num_workers=effective_num_workers,
-            pin_memory=True if torch.cuda.is_available() else False,
-        )
+    # DataLoader
+    train_loader = DataLoader(
+        SequenceDataset(train_sequences),
+        batch_size=batch_size,
+        shuffle=shuffle_train,
+        collate_fn=lambda b: collate_padded_sequences(b, en_tokenizer.pad_token_id),
+        num_workers=num_workers,
+        pin_memory=True if torch.cuda.is_available() else False,
+    )
+    val_loader = DataLoader(
+        SequenceDataset(val_sequences),
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=lambda b: collate_padded_sequences(b, en_tokenizer.pad_token_id),
+        num_workers=num_workers,
+        pin_memory=True if torch.cuda.is_available() else False,
+    )
 
     return train_loader, val_loader
 
@@ -1762,24 +1669,17 @@ class AverageMeter:
     def avg(self): return self.sum / max(1, self.n)
 
 
-def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, mtp_config=None, use_kimi=False):
+def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, en_tokenizer=None):
     """
-    训练单步
+    训练单步（Kimi因果语言模型）
     
-    如果 use_kimi=True，使用因果语言模型训练方式
-    如果 use_kimi=False，使用seq2seq训练方式
-    
-    注意：训练时不使用KV-cache（use_cache默认为False）
-    原因：
-    - 训练使用teacher forcing，有完整的目标序列
-    - 可以并行计算所有位置的attention，无需逐token生成
-    - KV-cache主要用于推理阶段的自回归生成
+    注意：训练时不使用KV-cache
     """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     transformer.train()
 
-    # 使用 PyTorch SDPA + bf16 autocast（L20 支持bf16）
+    # 使用 PyTorch SDPA + bf16 autocast
     use_autocast = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     if use_autocast:
         autocast_ctx = torch.autocast(device_type="cuda", dtype=torch.bfloat16)
@@ -1787,73 +1687,30 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         from contextlib import nullcontext
         autocast_ctx = nullcontext()
 
-    if use_kimi:
-        # Kimi因果语言模型模式
-        input_ids = batch["input_ids"].to(device)
-        attention_mask = batch["attention_mask"].to(device)
-        
-        # 因果LM：输入是完整序列，labels是向右移位的序列
-        # input_ids: [BOS, tok1, tok2, ..., tokN, EOS]
-        # labels:    [tok1, tok2, ..., tokN, EOS, -100]
-        labels = input_ids.clone()
-        labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
-        
-        with autocast_ctx:
-            # Kimi模型的forward接口
-            outputs = transformer(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels,
-                use_cache=False,
-            )
-        
-        # Kimi模型返回 CausalLMOutputWithPast，包含loss
-        if hasattr(outputs, 'loss') and outputs.loss is not None:
-            loss = outputs.loss
-        else:
-            # 手动计算损失（如果模型没有返回loss）
-            logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-            loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=mtp_config)
-        
-        logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-        
-    else:
-        # 原有的seq2seq模式
-        inp = batch["pt_input_ids"].to(device)
-        tar = batch["en_input_ids"].to(device)
-
-        tar_inp = tar[:, :-1]
-        tar_real = tar[:, 1:]
-
-        SRC_PAD_ID = pt_tokenizer.pad_token_id
-        TGT_PAD_ID = en_tokenizer.pad_token_id
-
-        enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
-            inp, tar_inp, src_pad_id=SRC_PAD_ID, tgt_pad_id=TGT_PAD_ID
+    # Kimi因果语言模型模式
+    input_ids = batch["input_ids"].to(device)
+    attention_mask = batch["attention_mask"].to(device)
+    
+    # 因果LM：输入是完整序列，labels是向右移位的序列
+    labels = input_ids.clone()
+    labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
+    
+    with autocast_ctx:
+        outputs = transformer(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            use_cache=False,
         )
-        enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
-
-        with autocast_ctx:
-            transformer_output = transformer(
-                inp, tar_inp,
-                src_mask=enc_pad_mask,
-                tgt_mask=dec_mask,
-                enc_dec_mask=enc_dec_mask
-            )
-
-        # 处理 MoE 和 MTP 输出
-        if isinstance(transformer_output, tuple) and len(transformer_output) == 4:
-            logits, _, router_logits, mtp_logits = transformer_output
-        elif isinstance(transformer_output, tuple) and len(transformer_output) == 3:
-            logits, _, router_logits = transformer_output
-            mtp_logits = None
-        else:
-            logits, _ = transformer_output
-            router_logits = None
-            mtp_logits = None
-
-        loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config, mtp_logits=mtp_logits, mtp_config=mtp_config)
-        labels = tar_real
+    
+    # Kimi模型返回 CausalLMOutputWithPast，包含loss
+    if hasattr(outputs, 'loss') and outputs.loss is not None:
+        loss = outputs.loss
+    else:
+        logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+        loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=None)
+    
+    logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
 
     # 检测NaN或Inf损失
     if not torch.isfinite(loss):
@@ -1863,17 +1720,15 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
 
-    # 改进的梯度裁剪策略
+    # 梯度裁剪
     model_for_grad_clip = transformer.module if use_multi_gpu else transformer
     grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.5)
 
-    # 更严格的梯度监控
     if grad_norm > 5.0:
         logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
         torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.1)
-        logger.warning(f"Applied additional gradient clipping to 0.1")
 
-    # 检查是否有NaN梯度
+    # 检查NaN梯度
     has_nan_grad = False
     for name, param in model_for_grad_clip.named_parameters():
         if param.grad is not None and torch.isnan(param.grad).any():
@@ -1890,8 +1745,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         scheduler.step()
 
     # 计算准确率
-    PAD_ID = en_tokenizer.pad_token_id if not use_kimi else en_tokenizer.pad_token_id
-    acc = token_accuracy(labels, logits, pad_id=PAD_ID)
+    acc = token_accuracy(labels, logits, pad_id=en_tokenizer.pad_token_id)
     return loss.item(), acc
 
 
@@ -1909,8 +1763,7 @@ def train_model(
         tensorboard_dir: str = "runs",
         moe_config=None,
         use_multi_gpu: bool = False,
-        mtp_config=None,
-        use_kimi: bool = False,
+        en_tokenizer=None,
 ):
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(tensorboard_dir, exist_ok=True)
@@ -1937,7 +1790,7 @@ def train_model(
             for batch_idx, batch in enumerate(train_loader):
                 loss_val, acc_val = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
-                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, mtp_config=mtp_config, use_kimi=use_kimi
+                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, en_tokenizer=en_tokenizer
                 )
                 train_loss_meter.update(loss_val, 1)
                 train_acc_meter.update(acc_val, 1)
@@ -2005,7 +1858,7 @@ def train_model(
             logger.info(f"Time taken for 1 epoch: {time.time() - start:.2f} secs\n")
 
             # 每个epoch结束后进行验证集评测
-            validate_loss, validate_acc = evaluate_on_val(model, val_loader, device, moe_config=moe_config, mtp_config=mtp_config, use_kimi=use_kimi)
+            validate_loss, validate_acc = evaluate_on_val(model, val_loader, device, moe_config=moe_config, en_tokenizer=en_tokenizer)
 
             # 记录验证指标到 TensorBoard
             writer.add_scalar('Epoch/Validation_Loss', validate_loss, epoch + 1)
@@ -2128,78 +1981,40 @@ def evaluate(
 
 
 @torch.no_grad()
-def evaluate_on_val(model, val_loader, device, moe_config=None, mtp_config=None, use_kimi=False):
+def evaluate_on_val(model, val_loader, device, moe_config=None, en_tokenizer=None):
+    """验证集评估（Kimi因果语言模型模式）"""
     model.eval()
     total_loss = 0
     total_acc = 0
     total_count = 0
 
     for batch in val_loader:
-        if use_kimi:
-            # Kimi因果语言模型模式
-            input_ids = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            
-            labels = input_ids.clone()
-            labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
-            
-            outputs = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels,
-                use_cache=False,
-            )
-            
-            if hasattr(outputs, 'loss') and outputs.loss is not None:
-                loss = outputs.loss
-            else:
-                logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-                loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=mtp_config)
-            
-            logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-            acc = token_accuracy(labels, logits, pad_id=en_tokenizer.pad_token_id)
-            
-            total_loss += loss.item() * input_ids.size(0)
-            total_acc += acc * input_ids.size(0)
-            total_count += input_ids.size(0)
-            
+        # Kimi因果语言模型模式
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        
+        labels = input_ids.clone()
+        labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
+        
+        outputs = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            use_cache=False,
+        )
+        
+        if hasattr(outputs, 'loss') and outputs.loss is not None:
+            loss = outputs.loss
         else:
-            # 原有的seq2seq模式
-            inp = batch["pt_input_ids"].to(device)
-            tar = batch["en_input_ids"].to(device)
-
-            tar_inp = tar[:, :-1]
-            tar_real = tar[:, 1:]
-
-            enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
-                inp, tar_inp, src_pad_id=pt_tokenizer.pad_token_id, tgt_pad_id=en_tokenizer.pad_token_id
-            )
-            enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, tar_inp.size(1), -1)
-
-            model_output = model(
-                inp, tar_inp,
-                src_mask=enc_pad_mask,
-                tgt_mask=dec_mask,
-                enc_dec_mask=enc_dec_mask
-            )
-
-            # 处理不同模式的输出
-            if isinstance(model_output, tuple) and len(model_output) == 4:
-                logits, _, router_logits, mtp_logits = model_output
-            elif isinstance(model_output, tuple) and len(model_output) == 3:
-                logits, _, router_logits = model_output
-                mtp_logits = None
-            else:
-                logits, _ = model_output
-                router_logits = None
-                mtp_logits = None
-
-            loss = loss_function(tar_real, logits, router_logits=router_logits, moe_config=moe_config, mtp_logits=mtp_logits, mtp_config=mtp_config)
-            acc = token_accuracy(tar_real, logits, pad_id=en_tokenizer.pad_token_id)
-
-            total_loss += loss.item() * inp.size(0)
-            total_acc += acc * inp.size(0)
-            total_count += inp.size(0)
+            logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+            loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=None)
+        
+        logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+        acc = token_accuracy(labels, logits, pad_id=en_tokenizer.pad_token_id)
+        
+        total_loss += loss.item() * input_ids.size(0)
+        total_acc += acc * input_ids.size(0)
+        total_count += input_ids.size(0)
 
     avg_loss = total_loss / total_count
     avg_acc = total_acc / total_count
@@ -2355,19 +2170,10 @@ def load_ckpt(model, optimizer=None, scheduler=None, ckpt_dir="checkpoints", dev
 
 
 if __name__ == "__main__":
-    # 解析命令行参数
-    parser = argparse.ArgumentParser(description="Transformer Training Script")
-    parser.add_argument("--no_mla", action="store_true", 
-                       help="Disable MLA (default: MLA enabled)")
-    parser.add_argument("--use_kimi", action="store_true",
-                       help="Use Kimi causal language model instead of seq2seq Transformer")
-    
-    args = parser.parse_args()
-    
-    # 处理参数逻辑
-    use_kimi = args.use_kimi  # 是否使用Kimi模型
-    use_mla = not args.no_mla if not use_kimi else True  # Kimi模型默认使用MLA
-    use_mtp = True if not use_kimi else False  # MTP仅用于自定义Transformer
+    # 训练配置
+    use_kimi = True  # 使用Kimi因果语言模型
+    use_mla = True   # 使用MLA
+    use_mtp = False  # Kimi模型不使用MTP
     
     logger.info(f"🚀 Training Configuration:")
     logger.info(f"   - Model: {'Kimi Causal LM' if use_kimi else 'Seq2Seq Transformer'}")
@@ -2445,53 +2251,28 @@ if __name__ == "__main__":
     device = check_env()
     device, use_multi_gpu, gpu_count = setup_multi_gpu()
 
-    # 2. DDP 后端：先初始化（在数据加载之前）
-    p_cfg = ParallelConfig(mode=ParallelMode.ddp)
-    backend = create_backend(p_cfg)
-    backend.init_dist()
+    # 2. 加载数据集和训练tokenizer
+    logger.info("开始加载数据集和训练tokenizer...")
+    train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
     
-    # 3. 只在 rank 0 加载数据集和训练 tokenizer（避免内存溢出）
-    if dist.get_rank() == 0:
-        logger.info("开始加载数据集和训练tokenizer（仅在rank 0执行）...")
-        train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
-        
-        pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
-            train_dataset=train_dataset,
-            pt_key="pt",
-            en_key="en",
-            vocab_size=vocab_size,
-            min_freq=min_freq,
-            special_tokens=special_tokens,
-            save_dir_pt="tok_pt",
-            save_dir_en="tok_en",
-            max_length=max_length
-        )
-        test_tokenizers(en_tokenizer=en_tokenizer, pt_tokenizer=pt_tokenizer)
-    
-    # 等待 rank 0 完成
-    dist.barrier()
-    
-    # 其他进程加载已保存的 tokenizer（不加载数据集，后续从缓存加载）
-    if dist.get_rank() != 0:
-        pt_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_pt/tokenizer.json")
-        en_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_en/tokenizer.json")
-        
-        # 设置特殊符号
-        for tok in (pt_tokenizer, en_tokenizer):
-            tok.pad_token = "<pad>"
-            tok.unk_token = "<unk>"
-            tok.bos_token = "<s>"
-            tok.eos_token = "</s>"
-            tok.mask_token = "<mask>"
-            tok.model_max_length = max_length
-            tok.padding_side = "right"
+    pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
+        train_dataset=train_dataset,
+        pt_key="pt",
+        en_key="en",
+        vocab_size=vocab_size,
+        min_freq=min_freq,
+        special_tokens=special_tokens,
+        save_dir_pt="tok_pt",
+        save_dir_en="tok_en",
+        max_length=max_length
+    )
+    test_tokenizers(en_tokenizer=en_tokenizer, pt_tokenizer=pt_tokenizer)
 
     # MLA 配置
-    # use_mla 已在命令行参数中定义
     q_lora_rank = d_model // 2  # Q 的低秩维度，默认为 d_model 的一半
     kv_lora_rank = 4 * (d_model // num_heads)  # KV 的低秩维度，遵循DeepSeek标准：4 × head_dim
 
-    # 4. 构建模型
+    # 3. 构建模型
     input_vocab_size = pt_tokenizer.vocab_size
     target_vocab_size = en_tokenizer.vocab_size
 
@@ -2598,9 +2379,7 @@ if __name__ == "__main__":
         else:
             mtp_config = None
 
-    # 5. 构建过滤后的数据（只在 rank 0 构建并保存，其他进程加载）
-    import pickle
-    
+    # 4. 构建过滤后的数据
     # 定义数据缓存文件路径
     cache_dir = "data_cache"
     os.makedirs(cache_dir, exist_ok=True)
@@ -2626,39 +2405,26 @@ if __name__ == "__main__":
                     sequences.append(ids)
             return sequences
         
-        # 只在 rank 0 构建并保存数据
-        if dist.get_rank() == 0:
-            # 检查缓存是否存在
-            if os.path.exists(train_cache_file) and os.path.exists(val_cache_file):
-                logger.info(f"发现缓存文件，直接加载: {train_cache_file}, {val_cache_file}")
-                with open(train_cache_file, 'rb') as f:
-                    train_sequences = pickle.load(f)
-                with open(val_cache_file, 'rb') as f:
-                    val_sequences = pickle.load(f)
-                logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
-            else:
-                logger.info(f"开始构建过滤后的训练数据序列...")
-                train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
-                val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
-                logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
-                
-                # 保存到磁盘
-                logger.info(f"保存数据到缓存: {train_cache_file}, {val_cache_file}")
-                with open(train_cache_file, 'wb') as f:
-                    pickle.dump(train_sequences, f)
-                with open(val_cache_file, 'wb') as f:
-                    pickle.dump(val_sequences, f)
-        
-        # 等待 rank 0 保存完成
-        dist.barrier()
-        
-        # 其他进程从磁盘加载
-        if dist.get_rank() != 0:
-            logger.info(f"从缓存加载数据: {train_cache_file}, {val_cache_file}")
+        # 检查缓存是否存在
+        if os.path.exists(train_cache_file) and os.path.exists(val_cache_file):
+            logger.info(f"发现缓存文件，直接加载: {train_cache_file}, {val_cache_file}")
             with open(train_cache_file, 'rb') as f:
                 train_sequences = pickle.load(f)
             with open(val_cache_file, 'rb') as f:
                 val_sequences = pickle.load(f)
+            logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+        else:
+            logger.info(f"开始构建过滤后的训练数据序列...")
+            train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
+            val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
+            logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+            
+            # 保存到磁盘
+            logger.info(f"保存数据到缓存: {train_cache_file}, {val_cache_file}")
+            with open(train_cache_file, 'wb') as f:
+                pickle.dump(train_sequences, f)
+            with open(val_cache_file, 'wb') as f:
+                pickle.dump(val_sequences, f)
         
         # Dataset 类（单一序列）
         class SequenceDataset(Dataset):
@@ -2704,39 +2470,26 @@ if __name__ == "__main__":
                     pairs.append((pt_ids, en_ids))
             return pairs
         
-        # 只在 rank 0 构建并保存数据
-        if dist.get_rank() == 0:
-            # 检查缓存是否存在
-            if os.path.exists(train_cache_file) and os.path.exists(val_cache_file):
-                logger.info(f"发现缓存文件，直接加载: {train_cache_file}, {val_cache_file}")
-                with open(train_cache_file, 'rb') as f:
-                    train_pairs = pickle.load(f)
-                with open(val_cache_file, 'rb') as f:
-                    val_pairs = pickle.load(f)
-                logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
-            else:
-                logger.info(f"开始构建过滤后的训练数据对...")
-                train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
-                val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
-                logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
-                
-                # 保存到磁盘
-                logger.info(f"保存数据到缓存: {train_cache_file}, {val_cache_file}")
-                with open(train_cache_file, 'wb') as f:
-                    pickle.dump(train_pairs, f)
-                with open(val_cache_file, 'wb') as f:
-                    pickle.dump(val_pairs, f)
-        
-        # 等待 rank 0 保存完成
-        dist.barrier()
-        
-        # 其他进程从磁盘加载
-        if dist.get_rank() != 0:
-            logger.info(f"从缓存加载数据: {train_cache_file}, {val_cache_file}")
+        # 检查缓存是否存在
+        if os.path.exists(train_cache_file) and os.path.exists(val_cache_file):
+            logger.info(f"发现缓存文件，直接加载: {train_cache_file}, {val_cache_file}")
             with open(train_cache_file, 'rb') as f:
                 train_pairs = pickle.load(f)
             with open(val_cache_file, 'rb') as f:
                 val_pairs = pickle.load(f)
+            logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
+        else:
+            logger.info(f"开始构建过滤后的训练数据对...")
+            train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
+            val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
+            logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
+            
+            # 保存到磁盘
+            logger.info(f"保存数据到缓存: {train_cache_file}, {val_cache_file}")
+            with open(train_cache_file, 'wb') as f:
+                pickle.dump(train_pairs, f)
+            with open(val_cache_file, 'wb') as f:
+                pickle.dump(val_pairs, f)
         
         # Dataset 类（样本对）
         class PairsDataset(Dataset):
@@ -2777,33 +2530,30 @@ if __name__ == "__main__":
                 "en_attention_mask": en_attention_mask,
             }
     
-    # 基于过滤后的数据集创建分布式采样器
-    train_sampler, val_sampler = backend.get_samplers(filtered_train_dataset, filtered_val_dataset)
-    
     # 创建 DataLoader
-    effective_batch_size = batch_size * gpu_count
     train_loader2 = DataLoader(
         filtered_train_dataset,
-        batch_size=effective_batch_size,
-        shuffle=False,  # DDP下由sampler控制shuffle
-        sampler=train_sampler,
+        batch_size=batch_size,
+        shuffle=True,  # 训练集需要shuffle
         collate_fn=collate_padded,
         num_workers=0,
         pin_memory=True if torch.cuda.is_available() else False,
     )
     val_loader2 = DataLoader(
         filtered_val_dataset,
-        batch_size=effective_batch_size,
-        shuffle=False,
-        sampler=val_sampler,
+        batch_size=batch_size,
+        shuffle=False,  # 验证集不需要shuffle
         collate_fn=collate_padded,
         num_workers=0,
         pin_memory=True if torch.cuda.is_available() else False,
     )
-    # 只在rank0测试
-    if dist.get_rank() == 0:
-        test_dataloaders(train_loader2, val_loader2)
-    model, _device = backend.wrap_model(model)
+    
+    # 测试DataLoader
+    test_dataloaders(train_loader2, val_loader2)
+    
+    # 使用DP包装模型
+    model = wrap_model_for_multi_gpu(model, use_multi_gpu, gpu_count)
+    model.to(device)
     num_training_steps = len(train_loader2) * epochs
 
     # Fused AdamW（在 torch>=2.0 + CUDA 可用时）
@@ -2843,14 +2593,13 @@ if __name__ == "__main__":
         optimizer=optimizer,
         train_loader=train_loader2,
         val_loader=val_loader2,
-        scheduler=scheduler,  # Noam 调度
-        device=_device if torch.cuda.is_available() else device,
+        scheduler=scheduler,
+        device=device,
         log_every=100,
         ckpt_dir=checkpoint_dir,  # 使用动态的checkpoint目录
         ckpt_prefix="transformer",
         tensorboard_dir="runs",  # TensorBoard 日志目录
         moe_config=moe_config,  # MoE 配置
-        use_multi_gpu=True,  # DDP 多卡训练
-        mtp_config=mtp_config if use_mtp else None,  # MTP 配置
-        use_kimi=use_kimi,  # 是否使用Kimi因果语言模型
+        use_multi_gpu=use_multi_gpu,  # DP 多卡训练
+        en_tokenizer=en_tokenizer,  # 传入tokenizer用于计算准确率
     )

@@ -29,7 +29,7 @@ from collections import OrderedDict
 
 # 多卡训练设置
 import torch.distributed as dist
-from torch.nn.parallel import DataParallel, DistributedDataParallel
+from torch.nn.parallel import DataParallel
 
 # 设置可见的GPU，可以根据需要修改
 os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,5,6,7"  # 使用4张GPU
