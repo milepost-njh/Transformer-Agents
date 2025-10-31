@@ -4,6 +4,8 @@ import os
 import sys
 import time
 import math
+import gc
+import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,7 +31,6 @@ from core.models.modeling_deepseek import DeepseekV3MoE
 from collections import OrderedDict
 from core.normalization import RMSNorm, LayerNorm
 from torch.nn.parallel import DataParallel
-import pickle
 
 # Kimi模型导入
 from core.models.kimi_linear.modeling_kimi import (
@@ -2251,21 +2252,46 @@ if __name__ == "__main__":
     device = check_env()
     device, use_multi_gpu, gpu_count = setup_multi_gpu()
 
-    # 2. 加载数据集和训练tokenizer
-    logger.info("开始加载数据集和训练tokenizer...")
-    train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+    # 2. 加载或训练tokenizer
+    if os.path.exists("tok_pt/tokenizer.json") and os.path.exists("tok_en/tokenizer.json"):
+        # tokenizer已存在，直接加载
+        logger.info("发现已保存的tokenizer，直接加载...")
+        pt_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_pt/tokenizer.json")
+        en_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_en/tokenizer.json")
+        
+        # 设置特殊符号
+        for tok in (pt_tokenizer, en_tokenizer):
+            tok.pad_token = "<pad>"
+            tok.unk_token = "<unk>"
+            tok.bos_token = "<s>"
+            tok.eos_token = "</s>"
+            tok.mask_token = "<mask>"
+            tok.model_max_length = max_length
+            tok.padding_side = "right"
+        
+        logger.info(f"✅ Tokenizer加载完成: pt词表 {len(pt_tokenizer)}, en词表 {len(en_tokenizer)}")
+    else:
+        # tokenizer不存在，需要训练
+        logger.info("未发现tokenizer，开始加载数据集并训练tokenizer...")
+        train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+        
+        pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
+            train_dataset=train_dataset,
+            pt_key="pt",
+            en_key="en",
+            vocab_size=vocab_size,
+            min_freq=min_freq,
+            special_tokens=special_tokens,
+            save_dir_pt="tok_pt",
+            save_dir_en="tok_en",
+            max_length=max_length
+        )
+        logger.info("✅ Tokenizer训练完成")
+        
+        # 训练完后释放数据集内存
+        del train_dataset, val_dataset
+        gc.collect()
     
-    pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
-        train_dataset=train_dataset,
-        pt_key="pt",
-        en_key="en",
-        vocab_size=vocab_size,
-        min_freq=min_freq,
-        special_tokens=special_tokens,
-        save_dir_pt="tok_pt",
-        save_dir_en="tok_en",
-        max_length=max_length
-    )
     test_tokenizers(en_tokenizer=en_tokenizer, pt_tokenizer=pt_tokenizer)
 
     # MLA 配置
@@ -2414,6 +2440,10 @@ if __name__ == "__main__":
                 val_sequences = pickle.load(f)
             logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
         else:
+            # 需要重新构建，先加载原始数据集
+            logger.info(f"开始加载原始数据集...")
+            train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+            
             logger.info(f"开始构建过滤后的训练数据序列...")
             train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
             val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
@@ -2425,6 +2455,10 @@ if __name__ == "__main__":
                 pickle.dump(train_sequences, f)
             with open(val_cache_file, 'wb') as f:
                 pickle.dump(val_sequences, f)
+            
+            # 释放原始数据集内存
+            del train_dataset, val_dataset
+            gc.collect()
         
         # Dataset 类（单一序列）
         class SequenceDataset(Dataset):
@@ -2479,6 +2513,10 @@ if __name__ == "__main__":
                 val_pairs = pickle.load(f)
             logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
         else:
+            # 需要重新构建，先加载原始数据集
+            logger.info(f"开始加载原始数据集...")
+            train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+            
             logger.info(f"开始构建过滤后的训练数据对...")
             train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
             val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
@@ -2490,6 +2528,10 @@ if __name__ == "__main__":
                 pickle.dump(train_pairs, f)
             with open(val_cache_file, 'wb') as f:
                 pickle.dump(val_pairs, f)
+            
+            # 释放原始数据集内存
+            del train_dataset, val_dataset
+            gc.collect()
         
         # Dataset 类（样本对）
         class PairsDataset(Dataset):
