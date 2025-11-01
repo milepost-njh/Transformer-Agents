@@ -1128,6 +1128,10 @@ if __name__ == "__main__":
     """
     # KimiLinearConfig already imported at the top of the file
     
+    # ===== 检测可用设备 =====
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    
     # ===== 配置参数 =====
     batch_size = 2
     seq_len = 16
@@ -1135,6 +1139,18 @@ if __name__ == "__main__":
     hidden_size = 512
     num_heads = 8
     head_dim = hidden_size // num_heads
+    
+    # 根据设备选择 attention 实现
+    attn_implementation = "eager"  # CPU 只支持 eager
+    if torch.cuda.is_available():
+        try:
+            import flash_attn
+            attn_implementation = "flash_attention_2"
+            print("Flash Attention 2 is available, using flash_attention_2")
+        except ImportError:
+            print("Flash Attention 2 not available, using eager attention")
+    else:
+        print("Running on CPU, using eager attention")
     
     # 创建配置（覆盖所有核心组件）
     config = KimiLinearConfig(
@@ -1170,16 +1186,25 @@ if __name__ == "__main__":
         rope_theta=10000.0,
         attention_dropout=0.0,
         use_cache=False,
-        _attn_implementation="eager",
+        _attn_implementation=attn_implementation,
     )
     
     # ===== 创建完整模型（顶层入口） =====
+    # 如果在 CPU 上运行，临时禁用 flash attention 支持
+    original_supports_flash = KimiPreTrainedModel._supports_flash_attn_2
+    if not torch.cuda.is_available():
+        KimiPreTrainedModel._supports_flash_attn_2 = False
+    
     model = KimiLinearForCausalLM(config)
     model.eval()  # 设置为推理模式（MoE需要）
+    model.to(device)  # 移动模型到对应设备
+    
+    # 恢复原始设置
+    KimiPreTrainedModel._supports_flash_attn_2 = original_supports_flash
     
     # ===== 构造输入数据 =====
-    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len))
-    attention_mask = torch.ones(batch_size, seq_len, dtype=torch.long)
+    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len)).to(device)
+    attention_mask = torch.ones(batch_size, seq_len, dtype=torch.long).to(device)
     
     # ===== 前向传播（这里会贯穿所有组件） =====
     # 在这里打断点，然后单步调试可以进入：
