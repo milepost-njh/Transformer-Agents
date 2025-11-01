@@ -17,30 +17,44 @@ os.environ["USE_TORCH"] = "1"  # 强制使用PyTorch后端
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # 禁用tokenizers并行以避免fork警告
 
 # ===== Mock 缺失的 torchao 子模块 =====
-# 解决 transformers 导入 torchao.prototype.safetensors.safetensors_utils 的问题
-# 注意：不要 mock torchao 主包，只 mock 缺失的子模块
+# 解决 transformers 导入 torchao.prototype.safetensors 相关模块的问题
 import importlib.util
+from types import ModuleType
 
 # 检查 torchao 是否已安装
 torchao_spec = importlib.util.find_spec("torchao")
-if torchao_spec is None:
-    # torchao 完全不存在，跳过（transformers 会自动处理）
-    pass
-else:
-    # torchao 存在但可能缺少某些子模块，只 mock 缺失的部分
-    from unittest.mock import MagicMock
+if torchao_spec is not None:
     try:
         import torchao
     except Exception:
         pass
     
-    # 只 mock 缺失的子模块
-    if 'torchao.prototype' not in sys.modules:
-        sys.modules['torchao.prototype'] = MagicMock()
-    if 'torchao.prototype.safetensors' not in sys.modules:
-        sys.modules['torchao.prototype.safetensors'] = MagicMock()
-    if 'torchao.prototype.safetensors.safetensors_utils' not in sys.modules:
-        sys.modules['torchao.prototype.safetensors.safetensors_utils'] = MagicMock()
+    # 创建虚拟的 safetensors 包结构
+    try:
+        # 先尝试正常导入
+        from torchao.prototype.safetensors import safetensors_support
+    except (ImportError, ModuleNotFoundError, AttributeError):
+        # 如果导入失败，创建 mock 模块
+        from unittest.mock import MagicMock
+        
+        # 创建一个真正的模块对象而不是 MagicMock
+        if 'torchao.prototype' not in sys.modules:
+            prototype_module = ModuleType('torchao.prototype')
+            prototype_module.__path__ = []
+            sys.modules['torchao.prototype'] = prototype_module
+        
+        if 'torchao.prototype.safetensors' not in sys.modules:
+            safetensors_module = ModuleType('torchao.prototype.safetensors')
+            safetensors_module.__path__ = []
+            safetensors_module.__package__ = 'torchao.prototype.safetensors'
+            sys.modules['torchao.prototype.safetensors'] = safetensors_module
+        
+        # Mock 所有需要的子模块
+        if 'torchao.prototype.safetensors.safetensors_utils' not in sys.modules:
+            sys.modules['torchao.prototype.safetensors.safetensors_utils'] = MagicMock()
+        
+        if 'torchao.prototype.safetensors.safetensors_support' not in sys.modules:
+            sys.modules['torchao.prototype.safetensors.safetensors_support'] = MagicMock()
 
 # ===== 现在可以安全导入其他库 =====
 import time
