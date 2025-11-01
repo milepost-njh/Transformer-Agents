@@ -190,26 +190,23 @@ def check_env():
     return device
 
 
-def load_translation_dataset(train_path: str, val_path: str, delimiter: str = "\t"):
+def load_dialogue_dataset(train_path: str, val_path: str):
     """
-    加载葡萄牙语-英语翻译数据集 (TED Talks)
+    加载心理咨询对话数据集 (PsyDTCorpus)
 
     参数:
-        train_path: 训练集 CSV 文件路径
-        val_path: 验证集 CSV 文件路径
-        delimiter: 分隔符，默认制表符 '\t'
+        train_path: 训练集 JSON 文件路径
+        val_path: 验证集 JSON 文件路径
 
     返回:
         train_dataset, val_dataset
     """
     dataset = load_dataset(
-        "csv",
+        "json",
         data_files={
             "train": train_path,
             "validation": val_path
-        },
-        column_names=["pt", "en"],
-        delimiter=delimiter
+        }
     )
 
     logger.info(f"✅ 数据集加载完成: 训练集 {len(dataset['train'])} 条, 验证集 {len(dataset['validation'])} 条")
@@ -217,132 +214,108 @@ def load_translation_dataset(train_path: str, val_path: str, delimiter: str = "\
     return dataset["train"], dataset["validation"]
 
 
-def train_and_load_tokenizers(
+def train_and_load_tokenizer(
         train_dataset,
-        pt_key="pt",
-        en_key="en",
         vocab_size=2 ** 13,
         min_freq=2,
         special_tokens=["<s>", "<pad>", "</s>", "<unk>", "<mask>"],
-        save_dir_pt="tok_pt",
-        save_dir_en="tok_en",
+        save_dir="tok_zh",
         max_length=1024
 ):
     """
-    训练并加载葡萄牙语和英语的 ByteLevel BPE Tokenizer
+    训练并加载中文对话的 ByteLevel BPE Tokenizer
 
     参数:
-        train_dataset: 数据集 (需包含 pt_key 和 en_key 两列)
-        pt_key: 源语言字段名 (默认 "pt")
-        en_key: 目标语言字段名 (默认 "en")
+        train_dataset: 数据集 (包含 messages 字段)
         vocab_size: 词表大小
         min_freq: 最小词频
         special_tokens: 特殊符号
-        save_dir_pt: 葡语 tokenizer 保存路径
-        save_dir_en: 英语 tokenizer 保存路径
+        save_dir: tokenizer 保存路径
         max_length: 模型最大序列长度
 
     返回:
-        pt_tokenizer, en_tokenizer
+        tokenizer
     """
 
-    def iter_lang(ds, key):
+    def iter_dialogues(ds):
+        """从messages中提取所有对话文本"""
         for ex in ds:
-            txt = ex[key]
-            if isinstance(txt, bytes):
-                txt = txt.decode("utf-8")
-            yield txt
+            messages = ex.get("messages", [])
+            for msg in messages:
+                content = msg.get("content", "")
+                if isinstance(content, bytes):
+                    content = content.decode("utf-8")
+                if content.strip():
+                    yield content
 
     # 初始化 tokenizer
-    pt_bbpe = ByteLevelBPETokenizer(add_prefix_space=True)
-    en_bbpe = ByteLevelBPETokenizer(add_prefix_space=True)
+    bbpe = ByteLevelBPETokenizer(add_prefix_space=True)
 
     # 训练 tokenizer
-    pt_bbpe.train_from_iterator(
-        iter_lang(train_dataset, pt_key),
-        vocab_size=vocab_size,
-        min_frequency=min_freq,
-        special_tokens=special_tokens,
-    )
-    en_bbpe.train_from_iterator(
-        iter_lang(train_dataset, en_key),
+    bbpe.train_from_iterator(
+        iter_dialogues(train_dataset),
         vocab_size=vocab_size,
         min_frequency=min_freq,
         special_tokens=special_tokens,
     )
 
     # 保存 vocab/merges + tokenizer.json
-    Path(save_dir_pt).mkdir(exist_ok=True)
-    Path(save_dir_en).mkdir(exist_ok=True)
-    pt_bbpe.save_model(save_dir_pt)
-    en_bbpe.save_model(save_dir_en)
-    pt_bbpe._tokenizer.save(f"{save_dir_pt}/tokenizer.json")
-    en_bbpe._tokenizer.save(f"{save_dir_en}/tokenizer.json")
+    Path(save_dir).mkdir(exist_ok=True)
+    bbpe.save_model(save_dir)
+    bbpe._tokenizer.save(f"{save_dir}/tokenizer.json")
 
     # 用 PreTrainedTokenizerFast 加载
-    pt_tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{save_dir_pt}/tokenizer.json")
-    en_tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{save_dir_en}/tokenizer.json")
+    tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{save_dir}/tokenizer.json")
 
     # 设置特殊符号
-    for tok in (pt_tokenizer, en_tokenizer):
-        tok.pad_token = "<pad>"
-        tok.unk_token = "<unk>"
-        tok.bos_token = "<s>"
-        tok.eos_token = "</s>"
-        tok.mask_token = "<mask>"
-        tok.model_max_length = max_length
-        tok.padding_side = "right"
+    tokenizer.pad_token = "<pad>"
+    tokenizer.unk_token = "<unk>"
+    tokenizer.bos_token = "<s>"
+    tokenizer.eos_token = "</s>"
+    tokenizer.mask_token = "<mask>"
+    tokenizer.model_max_length = max_length
+    tokenizer.padding_side = "right"
 
-    logger.info(f"✅ Tokenizer构建完成: pt词表 {len(pt_tokenizer)}, en词表 {len(en_tokenizer)}")
+    logger.info(f"✅ Tokenizer构建完成: 词表大小 {len(tokenizer)}")
 
-    return pt_tokenizer, en_tokenizer
+    return tokenizer
 
 
-def test_tokenizers(en_tokenizer, pt_tokenizer,
-                    en_sample: str = "Transformer is awesome.",
-                    pt_sample: str = "Transformers são incríveis."):
+def test_tokenizer(tokenizer, sample: str = "你好，我是一位心理咨询师。"):
     """
-    测试英文和葡萄牙语的 tokenizer 编码/解码是否正确，
-    并打印 token IDs、单个 ID 对应的 token 结果。
+    测试中文 tokenizer 编码/解码是否正确
 
     参数:
-        en_tokenizer: 英语 tokenizer
-        pt_tokenizer: 葡语 tokenizer
-        en_sample: 英文测试句子
-        pt_sample: 葡文测试句子
+        tokenizer: 中文 tokenizer
+        sample: 测试句子
     """
-
-    # --- English ---
-    en_ids = en_tokenizer.encode(en_sample, add_special_tokens=False)
-    en_decoded = en_tokenizer.decode(en_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-    assert en_decoded == en_sample, "EN decode != original input!"
-
-    # --- Portuguese ---
-    pt_ids = pt_tokenizer.encode(pt_sample, add_special_tokens=False)
-    pt_decoded = pt_tokenizer.decode(pt_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-    assert pt_decoded == pt_sample, "PT decode != original input!"
+    ids = tokenizer.encode(sample, add_special_tokens=False)
+    decoded = tokenizer.decode(ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
     
-    logger.info(f"✅ Tokenizer测试通过: EN({len(en_ids)} tokens), PT({len(pt_ids)} tokens)")
+    logger.info(f"原文: {sample}")
+    logger.info(f"Token IDs: {ids[:20]}..." if len(ids) > 20 else f"Token IDs: {ids}")
+    logger.info(f"解码结果: {decoded}")
+    logger.info(f"✅ Tokenizer测试通过: {len(ids)} tokens")
 
 
-def build_dataloaders(
+def build_dialogue_dataloaders(
         train_dataset,
         val_dataset,
-        en_tokenizer,
+        tokenizer,
         batch_size: int = 64,
-        max_length: int = 48,
+        max_length: int = 512,
         num_workers: int = 0,
         shuffle_train: bool = True,
 ):
     """
-    构建训练和验证 DataLoader（Kimi因果语言模型模式）
+    构建对话训练的 DataLoader（Kimi因果语言模型模式）
     
-    只使用目标语言(英语)进行因果语言模型训练
+    将messages中的system+user+assistant组合成训练序列
 
     参数:
         train_dataset: HuggingFace Dataset (训练集)
         val_dataset: HuggingFace Dataset (验证集)
-        en_tokenizer: 英语 tokenizer (目标语言)
+        tokenizer: 中文 tokenizer
         batch_size: 批大小
         max_length: 样本最大长度（超过则过滤）
         num_workers: DataLoader worker 数量
@@ -352,7 +325,21 @@ def build_dataloaders(
         train_loader, val_loader
     """
 
-    # 小工具：编码 + 添加 BOS/EOS
+    def messages_to_text(messages):
+        """将messages转换为训练文本"""
+        text_parts = []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "system":
+                text_parts.append(f"<|im_start|>system\n{content}<|im_end|>")
+            elif role == "user":
+                text_parts.append(f"<|im_start|>user\n{content}<|im_end|>")
+            elif role == "assistant":
+                text_parts.append(f"<|im_start|>assistant\n{content}<|im_end|>")
+        return "\n".join(text_parts)
+
+    # 编码 + 添加 BOS/EOS
     def encode_with_bos_eos(tokenizer, text: str):
         ids = tokenizer.encode(text, add_special_tokens=False)
         bos_id = tokenizer.bos_token_id
@@ -361,17 +348,21 @@ def build_dataloaders(
             raise ValueError("请确保 tokenizer 设置了 bos_token/eos_token")
         return [bos_id] + ids + [eos_id]
 
-    # Kimi因果语言模型模式：只使用英语文本
+    # 构建对话序列
     def build_filtered_sequences(hf_split, tokenizer, max_len: int):
         sequences = []
         for ex in hf_split:
-            ids = encode_with_bos_eos(tokenizer, ex["en"])
+            messages = ex.get("messages", [])
+            if not messages:
+                continue
+            text = messages_to_text(messages)
+            ids = encode_with_bos_eos(tokenizer, text)
             if len(ids) <= max_len:
                 sequences.append(ids)
         return sequences
 
-    train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
-    val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
+    train_sequences = build_filtered_sequences(train_dataset, tokenizer, max_length)
+    val_sequences = build_filtered_sequences(val_dataset, tokenizer, max_length)
     
     logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
 
@@ -411,7 +402,7 @@ def build_dataloaders(
         SequenceDataset(train_sequences),
         batch_size=batch_size,
         shuffle=shuffle_train,
-        collate_fn=lambda b: collate_padded_sequences(b, en_tokenizer.pad_token_id),
+        collate_fn=lambda b: collate_padded_sequences(b, tokenizer.pad_token_id),
         num_workers=num_workers,
         pin_memory=True if torch.cuda.is_available() else False,
     )
@@ -419,7 +410,7 @@ def build_dataloaders(
         SequenceDataset(val_sequences),
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=lambda b: collate_padded_sequences(b, en_tokenizer.pad_token_id),
+        collate_fn=lambda b: collate_padded_sequences(b, tokenizer.pad_token_id),
         num_workers=num_workers,
         pin_memory=True if torch.cuda.is_available() else False,
     )
@@ -437,7 +428,8 @@ def test_dataloaders(train_loader, val_loader, show_val: bool = True):
         show_val: 是否展示验证集的一个样本（默认 True）
     """
     batch = next(iter(train_loader))
-    logger.info(f"✅ DataLoader测试通过: batch_size={batch['pt_input_ids'].shape[0]}, seq_len={batch['pt_input_ids'].shape[1]}")
+    input_ids_key = 'input_ids' if 'input_ids' in batch else 'pt_input_ids'
+    logger.info(f"✅ DataLoader测试通过: batch_size={batch[input_ids_key].shape[0]}, seq_len={batch[input_ids_key].shape[1]}")
 
 
 class RoPEPositionalEncoding:
@@ -1665,7 +1657,7 @@ class AverageMeter:
     def avg(self): return self.sum / max(1, self.n)
 
 
-def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, en_tokenizer=None):
+def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, tokenizer=None):
     """
     训练单步（Kimi因果语言模型）
     
@@ -1741,7 +1733,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         scheduler.step()
 
     # 计算准确率
-    acc = token_accuracy(labels, logits, pad_id=en_tokenizer.pad_token_id)
+    acc = token_accuracy(labels, logits, pad_id=tokenizer.pad_token_id)
     return loss.item(), acc
 
 
@@ -1759,7 +1751,7 @@ def train_model(
         tensorboard_dir: str = "runs",
         moe_config=None,
         use_multi_gpu: bool = False,
-        en_tokenizer=None,
+        tokenizer=None,
 ):
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(tensorboard_dir, exist_ok=True)
@@ -1786,7 +1778,7 @@ def train_model(
             for batch_idx, batch in enumerate(train_loader):
                 loss_val, acc_val = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
-                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, en_tokenizer=en_tokenizer
+                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, tokenizer=tokenizer
                 )
                 train_loss_meter.update(loss_val, 1)
                 train_acc_meter.update(acc_val, 1)
@@ -1854,7 +1846,7 @@ def train_model(
             logger.info(f"Time taken for 1 epoch: {time.time() - start:.2f} secs\n")
 
             # 每个epoch结束后进行验证集评测
-            validate_loss, validate_acc = evaluate_on_val(model, val_loader, device, moe_config=moe_config, en_tokenizer=en_tokenizer)
+            validate_loss, validate_acc = evaluate_on_val(model, val_loader, device, moe_config=moe_config, tokenizer=tokenizer)
 
             # 记录验证指标到 TensorBoard
             writer.add_scalar('Epoch/Validation_Loss', validate_loss, epoch + 1)
@@ -1977,7 +1969,7 @@ def evaluate(
 
 
 @torch.no_grad()
-def evaluate_on_val(model, val_loader, device, moe_config=None, en_tokenizer=None):
+def evaluate_on_val(model, val_loader, device, moe_config=None, tokenizer=None):
     """验证集评估（Kimi因果语言模型模式）"""
     model.eval()
     total_loss = 0
@@ -2006,7 +1998,7 @@ def evaluate_on_val(model, val_loader, device, moe_config=None, en_tokenizer=Non
             loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=None)
         
         logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-        acc = token_accuracy(labels, logits, pad_id=en_tokenizer.pad_token_id)
+        acc = token_accuracy(labels, logits, pad_id=tokenizer.pad_token_id)
         
         total_loss += loss.item() * input_ids.size(0)
         total_acc += acc * input_ids.size(0)
@@ -2179,10 +2171,10 @@ if __name__ == "__main__":
 
     # 0. 常量定义
 
-    # 数据文件地址
-    train_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_train.csv"
-    val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
-    special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
+    # 数据文件地址（心理咨询对话数据集）
+    train_path = "/workspace/datasets/YIRONGCHEN/PsyDTCorpus/PsyDTCorpus_train_mulit_turn_packing.json"
+    val_path = "/workspace/datasets/YIRONGCHEN/PsyDTCorpus/PsyDTCorpus_test_single_turn_split.json"
+    special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>", "<|im_start|>", "<|im_end|>"]
     
     # 根据模型类型设置不同的checkpoint目录
     if use_kimi:
@@ -2194,10 +2186,10 @@ if __name__ == "__main__":
     logger.info(f"   - Checkpoint目录: {checkpoint_dir}")
 
     # 构建词表参数
-    vocab_size = 2 ** 13  # 词表大小
+    vocab_size = 2 ** 13  # 词表大小 (8192)
     min_freq = 2  # 最小词频
     special_tokens = special_tokens  # 特殊符号
-    max_length = 64  # 最大序列长度
+    max_length = 512  # 最大序列长度（对话数据更长）
 
     # 模型训练超参数
     batch_size = 32  # 批处理数 (降低batch size避免OOM)
@@ -2248,37 +2240,33 @@ if __name__ == "__main__":
     device, use_multi_gpu, gpu_count = setup_multi_gpu()
 
     # 2. 加载或训练tokenizer
-    if os.path.exists("tok_pt/tokenizer.json") and os.path.exists("tok_en/tokenizer.json"):
+    tokenizer_dir = "tok_zh"
+    if os.path.exists(f"{tokenizer_dir}/tokenizer.json"):
         # tokenizer已存在，直接加载
         logger.info("发现已保存的tokenizer，直接加载...")
-        pt_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_pt/tokenizer.json")
-        en_tokenizer = PreTrainedTokenizerFast(tokenizer_file="tok_en/tokenizer.json")
+        tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{tokenizer_dir}/tokenizer.json")
         
         # 设置特殊符号
-        for tok in (pt_tokenizer, en_tokenizer):
-            tok.pad_token = "<pad>"
-            tok.unk_token = "<unk>"
-            tok.bos_token = "<s>"
-            tok.eos_token = "</s>"
-            tok.mask_token = "<mask>"
-            tok.model_max_length = max_length
-            tok.padding_side = "right"
+        tokenizer.pad_token = "<pad>"
+        tokenizer.unk_token = "<unk>"
+        tokenizer.bos_token = "<s>"
+        tokenizer.eos_token = "</s>"
+        tokenizer.mask_token = "<mask>"
+        tokenizer.model_max_length = max_length
+        tokenizer.padding_side = "right"
         
-        logger.info(f"✅ Tokenizer加载完成: pt词表 {len(pt_tokenizer)}, en词表 {len(en_tokenizer)}")
+        logger.info(f"✅ Tokenizer加载完成: 词表大小 {len(tokenizer)}")
     else:
         # tokenizer不存在，需要训练
         logger.info("未发现tokenizer，开始加载数据集并训练tokenizer...")
-        train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+        train_dataset, val_dataset = load_dialogue_dataset(train_path=train_path, val_path=val_path)
         
-        pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
+        tokenizer = train_and_load_tokenizer(
             train_dataset=train_dataset,
-            pt_key="pt",
-            en_key="en",
             vocab_size=vocab_size,
             min_freq=min_freq,
             special_tokens=special_tokens,
-            save_dir_pt="tok_pt",
-            save_dir_en="tok_en",
+            save_dir=tokenizer_dir,
             max_length=max_length
         )
         logger.info("✅ Tokenizer训练完成")
@@ -2287,15 +2275,14 @@ if __name__ == "__main__":
         del train_dataset, val_dataset
         gc.collect()
     
-    test_tokenizers(en_tokenizer=en_tokenizer, pt_tokenizer=pt_tokenizer)
+    test_tokenizer(tokenizer=tokenizer)
 
     # MLA 配置
     q_lora_rank = d_model // 2  # Q 的低秩维度，默认为 d_model 的一半
     kv_lora_rank = 4 * (d_model // num_heads)  # KV 的低秩维度，遵循DeepSeek标准：4 × head_dim
 
     # 3. 构建模型
-    input_vocab_size = pt_tokenizer.vocab_size
-    target_vocab_size = en_tokenizer.vocab_size
+    vocab_size_model = tokenizer.vocab_size
 
     if use_kimi:
         # 使用 Kimi 因果语言模型
@@ -2303,7 +2290,7 @@ if __name__ == "__main__":
         
         # 配置 Kimi 模型
         kimi_config = KimiLinearConfig(
-            vocab_size=target_vocab_size,
+            vocab_size=vocab_size_model,
             hidden_size=d_model,
             head_dim=head_dim,
             intermediate_size=dff,
@@ -2314,9 +2301,9 @@ if __name__ == "__main__":
             initializer_range=0.02,
             rms_norm_eps=1e-6,
             use_cache=False,  # 训练时不使用cache
-            pad_token_id=en_tokenizer.pad_token_id,
-            bos_token_id=en_tokenizer.bos_token_id,
-            eos_token_id=en_tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
             rope_theta=10000.0,
             tie_word_embeddings=False,
             # MoE 配置
@@ -2348,18 +2335,18 @@ if __name__ == "__main__":
         mtp_config = None  # Kimi模型不使用MTP
         
     else:
-        # 使用原有的 Seq2Seq Transformer
+        # 使用原有的 Seq2Seq Transformer（对话任务不再使用此模式）
         model = Transformer(
             num_layers=num_layers,
-            input_vocab_size=input_vocab_size,
-            target_vocab_size=target_vocab_size,
+            input_vocab_size=vocab_size_model,
+            target_vocab_size=vocab_size_model,
             max_length=max_length,
             d_model=d_model,
             num_heads=num_heads,
             dff=dff,
             rate=dropout_rate,
-            src_padding_idx=pt_tokenizer.pad_token_id if hasattr(pt_tokenizer, "pad_token_id") else None,
-            tgt_padding_idx=en_tokenizer.pad_token_id if hasattr(en_tokenizer, "pad_token_id") else None,
+            src_padding_idx=tokenizer.pad_token_id if hasattr(tokenizer, "pad_token_id") else None,
+            tgt_padding_idx=tokenizer.pad_token_id if hasattr(tokenizer, "pad_token_id") else None,
             use_rope=True,
             use_moe=use_moe,
             moe_config=moe_config,
@@ -2390,7 +2377,7 @@ if __name__ == "__main__":
             mtp_config = DeepSeekMTPConfig(
                 hidden_size=d_model,
                 num_nextn_predict_layers=2,  # MTP 预测层数
-                vocab_size=target_vocab_size,
+                vocab_size=vocab_size_model,
                 max_position_embeddings=max_length,
                 use_moe=use_moe,
                 moe_config=moe_config,
@@ -2419,11 +2406,29 @@ if __name__ == "__main__":
         return [bos_id] + ids + [eos_id]
     
     if use_kimi:
-        # Kimi因果语言模型模式：只使用英语文本
+        # Kimi因果语言模型模式：使用对话数据
+        def messages_to_text(messages):
+            """将messages转换为训练文本"""
+            text_parts = []
+            for msg in messages:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if role == "system":
+                    text_parts.append(f"<|im_start|>system\n{content}<|im_end|>")
+                elif role == "user":
+                    text_parts.append(f"<|im_start|>user\n{content}<|im_end|>")
+                elif role == "assistant":
+                    text_parts.append(f"<|im_start|>assistant\n{content}<|im_end|>")
+            return "\n".join(text_parts)
+        
         def build_filtered_sequences(hf_split, tokenizer, max_len: int):
             sequences = []
             for ex in hf_split:
-                ids = encode_with_bos_eos(tokenizer, ex["en"])
+                messages = ex.get("messages", [])
+                if not messages:
+                    continue
+                text = messages_to_text(messages)
+                ids = encode_with_bos_eos(tokenizer, text)
                 if len(ids) <= max_len:
                     sequences.append(ids)
             return sequences
@@ -2439,11 +2444,11 @@ if __name__ == "__main__":
         else:
             # 需要重新构建，先加载原始数据集
             logger.info(f"开始加载原始数据集...")
-            train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+            train_dataset, val_dataset = load_dialogue_dataset(train_path=train_path, val_path=val_path)
             
             logger.info(f"开始构建过滤后的训练数据序列...")
-            train_sequences = build_filtered_sequences(train_dataset, en_tokenizer, max_length)
-            val_sequences = build_filtered_sequences(val_dataset, en_tokenizer, max_length)
+            train_sequences = build_filtered_sequences(train_dataset, tokenizer, max_length)
+            val_sequences = build_filtered_sequences(val_dataset, tokenizer, max_length)
             logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
             
             # 保存到磁盘
@@ -2484,21 +2489,39 @@ if __name__ == "__main__":
                 return out, attn
 
             ids_list = [ex["input_ids"] for ex in batch]
-            input_ids, attention_mask = pad_block(ids_list, en_tokenizer.pad_token_id)
+            input_ids, attention_mask = pad_block(ids_list, tokenizer.pad_token_id)
 
             return {
                 "input_ids": input_ids,
                 "attention_mask": attention_mask,
             }
     else:
-        # Seq2Seq模式：使用源语言-目标语言对
-        def build_filtered_pairs(hf_split, pt_tok, en_tok, max_len: int):
+        # Seq2Seq模式：使用对话数据（与Kimi模式类似）
+        def messages_to_text(messages):
+            """将messages转换为训练文本"""
+            text_parts = []
+            for msg in messages:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if role == "system":
+                    text_parts.append(f"<|im_start|>system\n{content}<|im_end|>")
+                elif role == "user":
+                    text_parts.append(f"<|im_start|>user\n{content}<|im_end|>")
+                elif role == "assistant":
+                    text_parts.append(f"<|im_start|>assistant\n{content}<|im_end|>")
+            return "\n".join(text_parts)
+        
+        def build_filtered_pairs(hf_split, tok, max_len: int):
             pairs = []
             for ex in hf_split:
-                pt_ids = encode_with_bos_eos(pt_tok, ex["pt"])
-                en_ids = encode_with_bos_eos(en_tok, ex["en"])
-                if len(pt_ids) <= max_len and len(en_ids) <= max_len:
-                    pairs.append((pt_ids, en_ids))
+                messages = ex.get("messages", [])
+                if not messages:
+                    continue
+                text = messages_to_text(messages)
+                ids = encode_with_bos_eos(tok, text)
+                if len(ids) <= max_len:
+                    # Seq2Seq模式下用同样的序列作为输入和输出
+                    pairs.append((ids, ids))
             return pairs
         
         # 检查缓存是否存在
@@ -2512,11 +2535,11 @@ if __name__ == "__main__":
         else:
             # 需要重新构建，先加载原始数据集
             logger.info(f"开始加载原始数据集...")
-            train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+            train_dataset, val_dataset = load_dialogue_dataset(train_path=train_path, val_path=val_path)
             
             logger.info(f"开始构建过滤后的训练数据对...")
-            train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
-            val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
+            train_pairs = build_filtered_pairs(train_dataset, tokenizer, max_length)
+            val_pairs = build_filtered_pairs(val_dataset, tokenizer, max_length)
             logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
             
             # 保存到磁盘
@@ -2559,8 +2582,8 @@ if __name__ == "__main__":
 
             pt_ids_list = [ex["pt_input_ids"] for ex in batch]
             en_ids_list = [ex["en_input_ids"] for ex in batch]
-            pt_input_ids, pt_attention_mask = pad_block(pt_ids_list, pt_tokenizer.pad_token_id)
-            en_input_ids, en_attention_mask = pad_block(en_ids_list, en_tokenizer.pad_token_id)
+            pt_input_ids, pt_attention_mask = pad_block(pt_ids_list, tokenizer.pad_token_id)
+            en_input_ids, en_attention_mask = pad_block(en_ids_list, tokenizer.pad_token_id)
 
             return {
                 "pt_input_ids": pt_input_ids,
@@ -2616,7 +2639,7 @@ if __name__ == "__main__":
 
     # 7. 自定义损失函数
     # PyTorch 的 CrossEntropyLoss 默认就支持 from_logits=True
-    PAD_ID_TGT = en_tokenizer.pad_token_id
+    PAD_ID_TGT = tokenizer.pad_token_id
     global loss_object
     loss_object = nn.CrossEntropyLoss(reduction="none", ignore_index=PAD_ID_TGT)
 
@@ -2640,5 +2663,5 @@ if __name__ == "__main__":
         tensorboard_dir="runs",  # TensorBoard 日志目录
         moe_config=moe_config,  # MoE 配置
         use_multi_gpu=use_multi_gpu,  # DP 多卡训练
-        en_tokenizer=en_tokenizer,  # 传入tokenizer用于计算准确率
+        tokenizer=tokenizer,  # 传入tokenizer用于计算准确率
     )
