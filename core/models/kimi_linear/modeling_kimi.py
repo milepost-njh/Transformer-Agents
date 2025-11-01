@@ -86,7 +86,11 @@ def pad_input(hidden_states, indices, batch_size, seqlen):
     output[indices] = hidden_states
     return rearrange(output, "(b s) d -> b s d", b=batch_size)
 
-from .configuration_kimi import KimiLinearConfig
+# Handle both relative and absolute imports
+try:
+    from .configuration_kimi import KimiLinearConfig
+except ImportError:
+    from configuration_kimi import KimiLinearConfig
 
 assert version.parse(transformers.__version__) >= version.parse("4.56.0"), \
     "Please upgrade transformers to >= 4.56.0"
@@ -1088,7 +1092,7 @@ if __name__ == "__main__":
             └── norm (KimiRMSNorm)
             └── lm_head (Linear)
     """
-    from .configuration_kimi import KimiLinearConfig
+    # KimiLinearConfig already imported at the top of the file
     
     # ===== 配置参数 =====
     batch_size = 2
