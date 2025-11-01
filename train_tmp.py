@@ -2229,10 +2229,10 @@ if __name__ == "__main__":
     vocab_size = 2 ** 13  # 词表大小 (8192)
     min_freq = 2  # 最小词频
     special_tokens = special_tokens  # 特殊符号
-    max_length = 512  # 最大序列长度（对话数据更长）
+    max_length = 2048  # 最大序列长度（心理咨询对话较长，需要更大的长度）
 
     # 模型训练超参数
-    batch_size = 32  # 批处理数 (降低batch size避免OOM)
+    batch_size = 8  # 批处理数 (max_length=2048 时需要更小的 batch_size 避免OOM)
     warmup_steps = 4000  # warmup steps数
     epochs = 30  # 训练轮数
     # learning_rate = 1.0           # 学习率
