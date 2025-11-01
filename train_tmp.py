@@ -2333,12 +2333,14 @@ if __name__ == "__main__":
             num_expert_group=moe_config.n_group if use_moe else 1,
             topk_group=moe_config.topk_group if use_moe else 1,
             # MLA 配置
-            q_lora_rank=q_lora_rank if use_mla else None,
+            q_lora_rank=None,  # Kimi 模型强制要求 q_lora_rank 为 None
             kv_lora_rank=kv_lora_rank if use_mla else None,
             qk_nope_head_dim=head_dim // 2 if use_mla else None,
             qk_rope_head_dim=head_dim // 2 if use_mla else None,
             v_head_dim=head_dim if use_mla else None,
-            mla_use_nope=False,
+            mla_use_nope=True,  # Kimi 模型使用 nope
+            # Attention 实现配置
+            _attn_implementation="flash_attention_2",  # 使用 Flash Attention 2
         )
         
         model = KimiLinearForCausalLM(kimi_config)
