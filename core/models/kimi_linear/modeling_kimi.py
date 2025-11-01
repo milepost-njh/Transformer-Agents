@@ -1,9 +1,29 @@
 import math
+import sys
 from collections.abc import Callable
 from typing import Any, List, Optional, Tuple, Union
+from unittest.mock import MagicMock
 
 import torch
 import torch.nn.functional as F
+
+# Mock the problematic torchao module before importing transformers
+# This prevents the ModuleNotFoundError from torchao.prototype.safetensors
+try:
+    import torchao.prototype.safetensors.safetensors_utils
+except ImportError:
+    # Create a mock module structure
+    if 'torchao' not in sys.modules:
+        sys.modules['torchao'] = MagicMock()
+    if 'torchao.prototype' not in sys.modules:
+        sys.modules['torchao.prototype'] = MagicMock()
+    if 'torchao.prototype.safetensors' not in sys.modules:
+        sys.modules['torchao.prototype.safetensors'] = MagicMock()
+    if 'torchao.prototype.safetensors.safetensors_utils' not in sys.modules:
+        mock_module = MagicMock()
+        mock_module.is_metadata_torchao = MagicMock(return_value=False)
+        sys.modules['torchao.prototype.safetensors.safetensors_utils'] = mock_module
+
 import transformers
 from einops import rearrange
 from packaging import version
@@ -15,14 +35,12 @@ from transformers.masking_utils import create_causal_mask
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_outputs import (BaseModelOutputWithPast,
                                            CausalLMOutputWithPast)
-# Try to import optional dependencies that may fail due to torchao issues
+from transformers.modeling_utils import PreTrainedModel
+
 try:
-    from transformers.modeling_utils import (ALL_ATTENTION_FUNCTIONS,
-                                             PreTrainedModel)
-except ImportError:
-    # Fallback if transformers has torchao import issues
+    from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+except (ImportError, AttributeError):
     ALL_ATTENTION_FUNCTIONS = None
-    from transformers import PreTrainedModel
 
 try:
     from transformers.processing_utils import Unpack
@@ -414,7 +432,11 @@ class KimiMLAAttention(nn.Module):
 
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":
-            attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+            if ALL_ATTENTION_FUNCTIONS is not None:
+                attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+            else:
+                # Fallback to eager if ALL_ATTENTION_FUNCTIONS is not available
+                attention_interface = eager_attention_forward
 
         attn_output, _ = attention_interface(
             self,
