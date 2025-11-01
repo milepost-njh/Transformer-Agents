@@ -48,20 +48,7 @@ from core.normalization import RMSNorm, LayerNorm
 from torch.nn.parallel import DataParallel
 
 # Kimi模型导入
-from core.models.kimi_linear.modeling_kimi import (
-    KimiLinearForCausalLM,
-    KimiLinearModel,
-    KimiDynamicCache,
-    KimiRMSNorm,
-    KimiMLAAttention,
-    KimiDeltaAttention,
-    KimiMoEGate,
-    KimiSparseMoeBlock,
-    KimiDecoderLayer,
-    KimiPreTrainedModel,
-    KimiMLP,
-    KimiBlockSparseMLP
-)
+from core.models.kimi_linear.modeling_kimi import KimiLinearForCausalLM
 from core.models.kimi_linear.configuration_kimi import KimiLinearConfig
 
 

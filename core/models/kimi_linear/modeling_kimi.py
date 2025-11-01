@@ -15,19 +15,19 @@ from transformers.masking_utils import create_causal_mask
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_outputs import (BaseModelOutputWithPast,
                                            CausalLMOutputWithPast)
-from transformers.modeling_utils import (ALL_ATTENTION_FUNCTIONS,
-                                         PreTrainedModel)
-from transformers.processing_utils import Unpack
+# from transformers.modeling_utils import (ALL_ATTENTION_FUNCTIONS,
+#                                          PreTrainedModel)
+# from transformers.processing_utils import Unpack
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.utils import (TransformersKwargs, auto_docstring,
                                 can_return_tuple, logging)
 from transformers.utils.generic import OutputRecorder, check_model_inputs
 
 try:
-    from fla.layers.utils import get_unpad_data, index_first_axis, pad_input
     from fla.modules import FusedRMSNormGated, ShortConvolution
     from fla.ops.kda import chunk_kda, fused_recurrent_kda
     from fla.ops.kda.gate import fused_kda_gate
+    from fla.layers.utils import get_unpad_data, index_first_axis, pad_input
 except ImportError:
     raise ImportError("Plese run `pip install -U fla-core`")
 
@@ -975,20 +975,7 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
 
         Example:
 
-        ```python
-        >>> from transformers import AutoTokenizer, KimiLinearForCausalLM
-
-        >>> model = KimiLinearForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
-        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
-
-        >>> prompt = "Hey, are you conscious? Can you talk to me?"
-        >>> inputs = tokenizer(prompt, return_tensors="pt")
-
-        >>> # Generate
-        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
-        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
-        ```"""
+       """
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -1026,3 +1013,112 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
+
+if __name__ == "__main__":
+    """
+    调试入口：通过 KimiLinearForCausalLM 贯穿所有核心组件
+    执行路径：
+        KimiLinearForCausalLM
+        └── KimiLinearModel
+            ├── embed_tokens (Embedding)
+            ├── layers (多个 KimiDecoderLayer)
+            │   ├── input_layernorm (KimiRMSNorm)
+            │   ├── self_attn (KimiMLAAttention 或 KimiDeltaAttention)
+            │   ├── post_attention_layernorm (KimiRMSNorm)
+            │   └── block_sparse_moe (KimiSparseMoeBlock)
+            │       ├── gate (KimiMoEGate)
+            │       ├── experts (KimiBlockSparseMLP)
+            │       └── shared_experts (KimiMLP)
+            └── norm (KimiRMSNorm)
+            └── lm_head (Linear)
+    """
+    from .configuration_kimi import KimiLinearConfig
+    
+    # ===== 配置参数 =====
+    batch_size = 2
+    seq_len = 16
+    vocab_size = 1000
+    hidden_size = 512
+    num_heads = 8
+    head_dim = hidden_size // num_heads
+    
+    # 创建配置（覆盖所有核心组件）
+    config = KimiLinearConfig(
+        vocab_size=vocab_size,
+        hidden_size=hidden_size,
+        num_hidden_layers=4,  # 4层，会创建多个 DecoderLayer
+        num_attention_heads=num_heads,
+        num_key_value_heads=num_heads,
+        intermediate_size=2048,
+        hidden_act="silu",
+        
+        # MLA 配置
+        q_lora_rank=None,
+        kv_lora_rank=4 * head_dim,
+        qk_nope_head_dim=head_dim // 2,
+        qk_rope_head_dim=head_dim // 2,
+        v_head_dim=head_dim,
+        mla_use_nope=True,
+        
+        # MoE 配置（确保每层都有 MoE）
+        num_experts=8,
+        num_experts_per_token=2,
+        moe_intermediate_size=1536,
+        moe_renormalize=True,
+        moe_router_activation_func="sigmoid",
+        num_shared_experts=2,
+        routed_scaling_factor=1.0,
+        first_k_dense_replace=0,  # 从第0层开始就用MoE
+        moe_layer_freq=1,  # 每层都是MoE
+        
+        # 其他配置
+        rms_norm_eps=1e-6,
+        rope_theta=10000.0,
+        attention_dropout=0.0,
+        use_cache=False,
+        _attn_implementation="eager",
+    )
+    
+    # ===== 创建完整模型（顶层入口） =====
+    model = KimiLinearForCausalLM(config)
+    model.eval()  # 设置为推理模式（MoE需要）
+    
+    # ===== 构造输入数据 =====
+    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len))
+    attention_mask = torch.ones(batch_size, seq_len, dtype=torch.long)
+    
+    # ===== 前向传播（这里会贯穿所有组件） =====
+    # 在这里打断点，然后单步调试可以进入：
+    # 1. KimiLinearForCausalLM.forward
+    # 2. KimiLinearModel.forward
+    # 3. KimiDecoderLayer.forward (每一层)
+    # 4. KimiMLAAttention.forward 或 KimiDeltaAttention.forward
+    # 5. KimiSparseMoeBlock.forward
+    # 6. KimiMoEGate.forward
+    # 7. KimiBlockSparseMLP.forward
+    # 8. KimiRMSNorm.forward
+    with torch.no_grad():
+        outputs = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+    
+    logits = outputs.logits  # (batch_size, seq_len, vocab_size)
+    
+    # ===== 如果需要单独调试某个组件 =====
+    # 1. 单独调试 MLA Attention
+    mla_layer = KimiMLAAttention(config=config, layer_idx=0)
+    hidden_states = torch.randn(batch_size, seq_len, hidden_size)
+    mla_output = mla_layer(hidden_states=hidden_states)
+    
+    # 2. 单独调试 Decoder Layer
+    decoder_layer = KimiDecoderLayer(config=config, layer_idx=0)
+    decoder_output = decoder_layer(hidden_states=hidden_states)
+    
+    # 3. 单独调试 MoE Block
+    moe_block = KimiSparseMoeBlock(config=config)
+    moe_block.eval()
+    moe_output = moe_block(hidden_states)
+    
+    print("Debug entry point ready. Set breakpoints and start debugging!")

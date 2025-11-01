@@ -1,6 +1,8 @@
 # Deep Learning Framework
 torch>=2.0.0
 numpy>=1.24.0
+fla-core>0.3.2
+triton
 
 # Transformers and NLP
 transformers>=4.30.0
