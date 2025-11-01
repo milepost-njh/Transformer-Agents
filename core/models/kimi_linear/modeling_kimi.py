@@ -27,9 +27,64 @@ try:
     from fla.modules import FusedRMSNormGated, ShortConvolution
     from fla.ops.kda import chunk_kda, fused_recurrent_kda
     from fla.ops.kda.gate import fused_kda_gate
-    from fla.layers.utils import get_unpad_data, index_first_axis, pad_input
 except ImportError:
     raise ImportError("Plese run `pip install -U fla-core`")
+
+# Utility functions for handling variable-length sequences
+def get_unpad_data(attention_mask):
+    """
+    Get indices, cumulative sequence lengths, and maximum sequence length from attention mask.
+    
+    Args:
+        attention_mask: Binary mask of shape [batch_size, seq_len] where 1 = valid token, 0 = padding
+        
+    Returns:
+        indices: Indices of valid (non-padded) tokens
+        cu_seqlens: Cumulative sequence lengths
+        max_seqlen_in_batch: Maximum sequence length in the batch
+    """
+    seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
+    indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
+    max_seqlen_in_batch = seqlens_in_batch.max().item()
+    cu_seqlens = torch.nn.functional.pad(
+        torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.int32), (1, 0)
+    )
+    return indices, cu_seqlens, max_seqlen_in_batch
+
+
+def index_first_axis(x, indices):
+    """
+    Index the first axis of a tensor.
+    
+    Args:
+        x: Tensor of shape [total_tokens, ...]
+        indices: Indices to select
+        
+    Returns:
+        Selected tensor
+    """
+    return x[indices]
+
+
+def pad_input(hidden_states, indices, batch_size, seqlen):
+    """
+    Pad the hidden states back to the original shape.
+    
+    Args:
+        hidden_states: Unpadded hidden states of shape [total_valid_tokens, hidden_dim]
+        indices: Indices of valid tokens
+        batch_size: Original batch size
+        seqlen: Original sequence length
+        
+    Returns:
+        Padded hidden states of shape [batch_size, seqlen, hidden_dim]
+    """
+    dim = hidden_states.shape[-1]
+    output = torch.zeros(
+        batch_size * seqlen, dim, dtype=hidden_states.dtype, device=hidden_states.device
+    )
+    output[indices] = hidden_states
+    return rearrange(output, "(b s) d -> b s d", b=batch_size)
 
 from .configuration_kimi import KimiLinearConfig
 
