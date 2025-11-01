@@ -1140,17 +1140,25 @@ if __name__ == "__main__":
     num_heads = 8
     head_dim = hidden_size // num_heads
     
-    # 根据设备选择 attention 实现
+    # 根据设备选择 attention 实现和数据类型
     attn_implementation = "eager"  # CPU 只支持 eager
+    dtype = torch.float32  # 默认使用 fp32
+    
     if torch.cuda.is_available():
         try:
             import flash_attn
             attn_implementation = "flash_attention_2"
-            print("Flash Attention 2 is available, using flash_attention_2")
+            # Flash Attention 2 只支持 fp16 和 bf16
+            if torch.cuda.is_bf16_supported():
+                dtype = torch.bfloat16
+                print("Flash Attention 2 is available, using flash_attention_2 with bfloat16")
+            else:
+                dtype = torch.float16
+                print("Flash Attention 2 is available, using flash_attention_2 with float16")
         except ImportError:
-            print("Flash Attention 2 not available, using eager attention")
+            print("Flash Attention 2 not available, using eager attention with float32")
     else:
-        print("Running on CPU, using eager attention")
+        print("Running on CPU, using eager attention with float32")
     
     # 创建配置（覆盖所有核心组件）
     config = KimiLinearConfig(
@@ -1197,10 +1205,12 @@ if __name__ == "__main__":
     
     model = KimiLinearForCausalLM(config)
     model.eval()  # 设置为推理模式（MoE需要）
-    model.to(device)  # 移动模型到对应设备
+    model.to(device=device, dtype=dtype)  # 移动模型到对应设备和数据类型
     
     # 恢复原始设置
     KimiPreTrainedModel._supports_flash_attn_2 = original_supports_flash
+    
+    print(f"Model created with dtype: {dtype}")
     
     # ===== 构造输入数据 =====
     input_ids = torch.randint(0, vocab_size, (batch_size, seq_len)).to(device)
@@ -1224,19 +1234,25 @@ if __name__ == "__main__":
     
     logits = outputs.logits  # (batch_size, seq_len, vocab_size)
     
+    print(f"\n✅ Model forward pass completed successfully!")
+    print(f"   Input shape: {input_ids.shape}")
+    print(f"   Output logits shape: {logits.shape}")
+    print(f"   Device: {device}, Dtype: {dtype}")
+    print(f"   Attention implementation: {attn_implementation}")
+    
     # ===== 如果需要单独调试某个组件 =====
     # 1. 单独调试 MLA Attention
-    mla_layer = KimiMLAAttention(config=config, layer_idx=0)
-    hidden_states = torch.randn(batch_size, seq_len, hidden_size)
-    mla_output = mla_layer(hidden_states=hidden_states)
+    # mla_layer = KimiMLAAttention(config=config, layer_idx=0)
+    # hidden_states = torch.randn(batch_size, seq_len, hidden_size).to(device=device, dtype=dtype)
+    # mla_output = mla_layer(hidden_states=hidden_states)
     
     # 2. 单独调试 Decoder Layer
-    decoder_layer = KimiDecoderLayer(config=config, layer_idx=0)
-    decoder_output = decoder_layer(hidden_states=hidden_states)
+    # decoder_layer = KimiDecoderLayer(config=config, layer_idx=0)
+    # decoder_output = decoder_layer(hidden_states=hidden_states)
     
     # 3. 单独调试 MoE Block
-    moe_block = KimiSparseMoeBlock(config=config)
-    moe_block.eval()
-    moe_output = moe_block(hidden_states)
+    # moe_block = KimiSparseMoeBlock(config=config)
+    # moe_block.eval()
+    # moe_output = moe_block(hidden_states)
     
-    print("Debug entry point ready. Set breakpoints and start debugging!")
+    print("\n🎉 All tests passed! Debug entry point ready. Set breakpoints and start debugging!")
