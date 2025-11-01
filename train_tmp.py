@@ -16,6 +16,18 @@ os.environ["USE_TORCH"] = "1"  # 强制使用PyTorch后端
 # 其他环境变量
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # 禁用tokenizers并行以避免fork警告
 
+# ===== Mock 缺失的 torchao 模块 =====
+# 解决 transformers 导入 torchao.prototype.safetensors.safetensors_utils 的问题
+from unittest.mock import MagicMock
+if 'torchao' not in sys.modules:
+    sys.modules['torchao'] = MagicMock()
+if 'torchao.prototype' not in sys.modules:
+    sys.modules['torchao.prototype'] = MagicMock()
+if 'torchao.prototype.safetensors' not in sys.modules:
+    sys.modules['torchao.prototype.safetensors'] = MagicMock()
+if 'torchao.prototype.safetensors.safetensors_utils' not in sys.modules:
+    sys.modules['torchao.prototype.safetensors.safetensors_utils'] = MagicMock()
+
 # ===== 现在可以安全导入其他库 =====
 import time
 import math
