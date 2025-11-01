@@ -241,17 +241,17 @@ def load_dialogue_dataset(train_path: str, val_path: str):
     返回:
         train_dataset, val_dataset
     """
-    dataset = load_dataset(
-        "json",
-        data_files={
-            "train": train_path,
-            "validation": val_path
-        }
-    )
+    # 分别加载训练集和验证集，避免列名不匹配问题
+    train_dataset = load_dataset("json", data_files=train_path, split="train")
+    val_dataset = load_dataset("json", data_files=val_path, split="train")
+    
+    # 统一列名：如果验证集有 sample_id，删除它
+    if "sample_id" in val_dataset.column_names:
+        val_dataset = val_dataset.remove_columns(["sample_id"])
 
-    logger.info(f"✅ 数据集加载完成: 训练集 {len(dataset['train'])} 条, 验证集 {len(dataset['validation'])} 条")
+    logger.info(f"✅ 数据集加载完成: 训练集 {len(train_dataset)} 条, 验证集 {len(val_dataset)} 条")
 
-    return dataset["train"], dataset["validation"]
+    return train_dataset, val_dataset
 
 
 def train_and_load_tokenizer(
