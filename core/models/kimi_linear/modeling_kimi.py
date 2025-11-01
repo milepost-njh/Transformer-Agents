@@ -1127,21 +1127,10 @@ if __name__ == "__main__":
             └── lm_head (Linear)
     """
     
-    # ===== 环境检测和配置 =====
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # 选择 attention 实现和数据类型
-    if torch.cuda.is_available():
-        try:
-            import flash_attn
-            attn_implementation = "flash_attention_2"
-            dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-        except ImportError:
-            attn_implementation = "eager"
-            dtype = torch.float32
-    else:
-        attn_implementation = "eager"
-        dtype = torch.float32
+    # ===== 配置 =====
+    device = torch.device("cuda")
+    attn_implementation = "flash_attention_2"
+    dtype = torch.bfloat16
     
     print(f"Device: {device} | Attention: {attn_implementation} | Dtype: {dtype}")
     
@@ -1184,9 +1173,6 @@ if __name__ == "__main__":
     )
     
     # ===== 创建模型 =====
-    if not torch.cuda.is_available():
-        KimiPreTrainedModel._supports_flash_attn_2 = False
-    
     model = KimiLinearForCausalLM(config)
     model.eval()
     model.to(device=device, dtype=dtype)
