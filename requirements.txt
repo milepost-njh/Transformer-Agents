@@ -1,0 +1,35 @@
+# Deep Learning Framework
+torch>=2.0.0
+numpy>=1.24.0
+
+# Transformers and NLP
+transformers>=4.30.0
+tokenizers>=0.13.0
+tiktoken>=0.5.1
+
+# Model Hub and Downloads
+huggingface-hub>=0.33.0
+modelscope>=1.28.0
+
+# Training and Optimization
+accelerate>=0.20.0
+datasets>=2.14.0
+
+# Monitoring and Logging
+tqdm>=4.67.0
+tensorboard>=2.13.0
+
+# Utilities
+pyyaml>=5.3.1
+regex>=2024.0.0
+filelock>=3.16.0
+fsspec>=2025.3.0
+
+# Development Tools (Optional)
+jupyter>=1.0.0
+ipython>=8.12.0
+
+# HTTP and Networking
+requests>=2.32.0
+certifi>=2019.11.0
+

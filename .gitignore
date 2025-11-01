@@ -95,7 +95,6 @@ data/
 datasets/
 *.csv
 *.jsonl
-*.txt
 *.tsv
 checkpoints/
 tensorflow_datasets/
