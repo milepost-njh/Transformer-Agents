@@ -1126,11 +1126,24 @@ if __name__ == "__main__":
             └── norm (KimiRMSNorm)
             └── lm_head (Linear)
     """
-    # KimiLinearConfig already imported at the top of the file
     
-    # ===== 检测可用设备 =====
+    # ===== 环境检测和配置 =====
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    
+    # 选择 attention 实现和数据类型
+    if torch.cuda.is_available():
+        try:
+            import flash_attn
+            attn_implementation = "flash_attention_2"
+            dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        except ImportError:
+            attn_implementation = "eager"
+            dtype = torch.float32
+    else:
+        attn_implementation = "eager"
+        dtype = torch.float32
+    
+    print(f"Device: {device} | Attention: {attn_implementation} | Dtype: {dtype}")
     
     # ===== 配置参数 =====
     batch_size = 2
@@ -1140,45 +1153,20 @@ if __name__ == "__main__":
     num_heads = 8
     head_dim = hidden_size // num_heads
     
-    # 根据设备选择 attention 实现和数据类型
-    attn_implementation = "eager"  # CPU 只支持 eager
-    dtype = torch.float32  # 默认使用 fp32
-    
-    if torch.cuda.is_available():
-        try:
-            import flash_attn
-            attn_implementation = "flash_attention_2"
-            # Flash Attention 2 只支持 fp16 和 bf16
-            if torch.cuda.is_bf16_supported():
-                dtype = torch.bfloat16
-                print("Flash Attention 2 is available, using flash_attention_2 with bfloat16")
-            else:
-                dtype = torch.float16
-                print("Flash Attention 2 is available, using flash_attention_2 with float16")
-        except ImportError:
-            print("Flash Attention 2 not available, using eager attention with float32")
-    else:
-        print("Running on CPU, using eager attention with float32")
-    
-    # 创建配置（覆盖所有核心组件）
     config = KimiLinearConfig(
         vocab_size=vocab_size,
         hidden_size=hidden_size,
-        num_hidden_layers=4,  # 4层，会创建多个 DecoderLayer
+        num_hidden_layers=4,
         num_attention_heads=num_heads,
         num_key_value_heads=num_heads,
         intermediate_size=2048,
         hidden_act="silu",
-        
-        # MLA 配置
         q_lora_rank=None,
         kv_lora_rank=4 * head_dim,
         qk_nope_head_dim=head_dim // 2,
         qk_rope_head_dim=head_dim // 2,
         v_head_dim=head_dim,
         mla_use_nope=True,
-        
-        # MoE 配置（确保每层都有 MoE）
         num_experts=8,
         num_experts_per_token=2,
         moe_intermediate_size=1536,
@@ -1186,10 +1174,8 @@ if __name__ == "__main__":
         moe_router_activation_func="sigmoid",
         num_shared_experts=2,
         routed_scaling_factor=1.0,
-        first_k_dense_replace=0,  # 从第0层开始就用MoE
-        moe_layer_freq=1,  # 每层都是MoE
-        
-        # 其他配置
+        first_k_dense_replace=0,
+        moe_layer_freq=1,
         rms_norm_eps=1e-6,
         rope_theta=10000.0,
         attention_dropout=0.0,
@@ -1197,62 +1183,48 @@ if __name__ == "__main__":
         _attn_implementation=attn_implementation,
     )
     
-    # ===== 创建完整模型（顶层入口） =====
-    # 如果在 CPU 上运行，临时禁用 flash attention 支持
-    original_supports_flash = KimiPreTrainedModel._supports_flash_attn_2
+    # ===== 创建模型 =====
     if not torch.cuda.is_available():
         KimiPreTrainedModel._supports_flash_attn_2 = False
     
     model = KimiLinearForCausalLM(config)
-    model.eval()  # 设置为推理模式（MoE需要）
-    model.to(device=device, dtype=dtype)  # 移动模型到对应设备和数据类型
+    model.eval()
+    model.to(device=device, dtype=dtype)
     
-    # 恢复原始设置
-    KimiPreTrainedModel._supports_flash_attn_2 = original_supports_flash
-    
-    print(f"Model created with dtype: {dtype}")
-    
-    # ===== 构造输入数据 =====
+    # ===== 测试完整前向传播 =====
     input_ids = torch.randint(0, vocab_size, (batch_size, seq_len)).to(device)
     attention_mask = torch.ones(batch_size, seq_len, dtype=torch.long).to(device)
     
-    # ===== 前向传播（这里会贯穿所有组件） =====
-    # 在这里打断点，然后单步调试可以进入：
-    # 1. KimiLinearForCausalLM.forward
-    # 2. KimiLinearModel.forward
-    # 3. KimiDecoderLayer.forward (每一层)
-    # 4. KimiMLAAttention.forward 或 KimiDeltaAttention.forward
-    # 5. KimiSparseMoeBlock.forward
-    # 6. KimiMoEGate.forward
-    # 7. KimiBlockSparseMLP.forward
-    # 8. KimiRMSNorm.forward
     with torch.no_grad():
-        outputs = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-        )
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
     
-    logits = outputs.logits  # (batch_size, seq_len, vocab_size)
+    logits = outputs.logits
+    print(f"\n✅ Full model test passed!")
+    print(f"   Input: {input_ids.shape} → Output: {logits.shape}")
     
-    print(f"\n✅ Model forward pass completed successfully!")
-    print(f"   Input shape: {input_ids.shape}")
-    print(f"   Output logits shape: {logits.shape}")
-    print(f"   Device: {device}, Dtype: {dtype}")
-    print(f"   Attention implementation: {attn_implementation}")
+    # ===== 单独测试各个组件 =====
+    print("\n📦 Testing individual components...")
     
-    # ===== 如果需要单独调试某个组件 =====
-    # 1. 单独调试 MLA Attention
-    # mla_layer = KimiMLAAttention(config=config, layer_idx=0)
-    # hidden_states = torch.randn(batch_size, seq_len, hidden_size).to(device=device, dtype=dtype)
-    # mla_output = mla_layer(hidden_states=hidden_states)
+    # 1. 测试 MLA Attention
+    mla_layer = KimiMLAAttention(config=config, layer_idx=0).to(device=device, dtype=dtype)
+    mla_layer.eval()
+    hidden_states = torch.randn(batch_size, seq_len, hidden_size).to(device=device, dtype=dtype)
+    with torch.no_grad():
+        mla_output = mla_layer(hidden_states=hidden_states)
+    print(f"   ✓ MLA Attention: {hidden_states.shape} → {mla_output.shape}")
     
-    # 2. 单独调试 Decoder Layer
-    # decoder_layer = KimiDecoderLayer(config=config, layer_idx=0)
-    # decoder_output = decoder_layer(hidden_states=hidden_states)
+    # 2. 测试 Decoder Layer
+    decoder_layer = KimiDecoderLayer(config=config, layer_idx=0).to(device=device, dtype=dtype)
+    decoder_layer.eval()
+    with torch.no_grad():
+        decoder_output = decoder_layer(hidden_states=hidden_states)
+    print(f"   ✓ Decoder Layer: {hidden_states.shape} → {decoder_output[0].shape}")
     
-    # 3. 单独调试 MoE Block
-    # moe_block = KimiSparseMoeBlock(config=config)
-    # moe_block.eval()
-    # moe_output = moe_block(hidden_states)
+    # 3. 测试 MoE Block
+    moe_block = KimiSparseMoeBlock(config=config).to(device=device, dtype=dtype)
+    moe_block.eval()
+    with torch.no_grad():
+        moe_output = moe_block(hidden_states)
+    print(f"   ✓ MoE Block: {hidden_states.shape} → {moe_output[0].shape}")
     
-    print("\n🎉 All tests passed! Debug entry point ready. Set breakpoints and start debugging!")
+    print("\n🎉 All tests passed! Ready for debugging!")
