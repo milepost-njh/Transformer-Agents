@@ -20,12 +20,17 @@ datasets>=2.14.0
 # Monitoring and Logging
 tqdm>=4.67.0
 tensorboard>=2.13.0
+loguru>=0.7.0
 
 # Utilities
 pyyaml>=5.3.1
 regex>=2024.0.0
 filelock>=3.16.0
 fsspec>=2025.3.0
+einops>=0.6.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+scikit-learn>=1.3.0
 
 # Development Tools (Optional)
 jupyter>=1.0.0
