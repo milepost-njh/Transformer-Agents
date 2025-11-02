@@ -230,6 +230,42 @@ def check_env():
     return device
 
 
+def set_random_seed(seed: int = 42):
+    """
+    设置所有随机数种子以确保实验可重复性
+    
+    参数:
+        seed: 随机数种子，默认 42
+    """
+    import random
+    
+    # Python 随机数
+    random.seed(seed)
+    
+    # NumPy 随机数
+    np.random.seed(seed)
+    
+    # PyTorch 随机数 (CPU)
+    torch.manual_seed(seed)
+    
+    # PyTorch 随机数 (CUDA)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # 多GPU
+    
+    # CUDNN 确定性行为（可能会影响性能）
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    logger.info(f"🎲 随机数种子已设置: {seed}")
+    logger.info(f"   - Python random seed: {seed}")
+    logger.info(f"   - NumPy seed: {seed}")
+    logger.info(f"   - PyTorch seed: {seed}")
+    if torch.cuda.is_available():
+        logger.info(f"   - CUDA seed: {seed}")
+        logger.info(f"   - CUDNN deterministic: True (可能影响性能)")
+
+
 def load_dialogue_dataset(train_path: str, val_path: str):
     """
     加载心理咨询对话数据集 (PsyDTCorpus)
@@ -2268,12 +2304,14 @@ if __name__ == "__main__":
     use_kimi = True  # 使用Kimi因果语言模型
     use_mla = True   # 使用MLA
     use_mtp = False  # Kimi模型不使用MTP
+    random_seed = 42  # 随机数种子，设置为固定值以确保实验可重复性
     
     logger.info(f"🚀 Training Configuration:")
     logger.info(f"   - Model: {'Kimi Causal LM' if use_kimi else 'Seq2Seq Transformer'}")
     logger.info(f"   - MLA (Multi-head Latent Attention): {use_mla}")
     logger.info(f"   - MTP (Multi-Token Prediction): {use_mtp}")
     logger.info(f"   - MoE: True (fixed)")
+    logger.info(f"   - Random Seed: {random_seed}")
 
     # 0. 常量定义
 
@@ -2344,6 +2382,9 @@ if __name__ == "__main__":
     # 1. 环境初始化
     device = check_env()
     device, use_multi_gpu, gpu_count = setup_multi_gpu()
+    
+    # 设置随机数种子以确保实验可重复性
+    set_random_seed(random_seed)
 
     # 2. 加载或训练tokenizer
     tokenizer_dir = "tok_zh"
