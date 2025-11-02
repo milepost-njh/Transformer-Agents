@@ -1697,7 +1697,7 @@ class AverageMeter:
     def avg(self): return self.sum / max(1, self.n)
 
 
-def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, tokenizer=None):
+def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, tokenizer=None, global_step=0):
     """
     训练单步（Kimi因果语言模型）
     
@@ -1832,14 +1832,13 @@ def train_model(
             model.train()
 
             for batch_idx, batch in enumerate(train_loader):
+                global_step += 1
                 loss_val, acc_val = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
-                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, tokenizer=tokenizer
+                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, tokenizer=tokenizer, global_step=global_step
                 )
                 train_loss_meter.update(loss_val, 1)
                 train_acc_meter.update(acc_val, 1)
-
-                global_step += 1
 
                 # 记录到 TensorBoard
                 writer.add_scalar('Train/Loss', loss_val, global_step)
