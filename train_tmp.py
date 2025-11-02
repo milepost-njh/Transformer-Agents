@@ -1740,6 +1740,10 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     
     logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
 
+    # 处理多GPU情况：DataParallel会返回多个loss（每个GPU一个）
+    if loss.dim() > 0:
+        loss = loss.mean()
+
     # 检测NaN或Inf损失
     if not torch.isfinite(loss):
         logger.error(f"Loss is {loss.item()}, skipping this batch")
