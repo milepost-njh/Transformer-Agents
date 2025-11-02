@@ -3,6 +3,9 @@
 # Kimi 模型训练启动脚本
 # 使用 nohup 后台运行，日志保存到 logs/ 目录
 
+# 清理旧的checkpoint（每次训练都从头开始）
+rm -rf checkpoints_kimi
+
 # 创建日志目录
 mkdir -p logs
 
@@ -10,6 +13,7 @@ mkdir -p logs
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="logs/train_kimi_${TIMESTAMP}.log"
 
+echo "🧹 Cleaned old checkpoints"
 echo "🚀 Starting Kimi training..."
 echo "📝 Log file: ${LOG_FILE}"
 
