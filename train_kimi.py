@@ -2339,14 +2339,14 @@ if __name__ == "__main__":
     special_tokens = special_tokens  # 特殊符号
     max_length = 4096  # 最大序列长度（心理咨询对话平均~2442 tokens，最大~3901，用4096保留100%数据）
 
-    # 模型训练超参数（充分利用80GB显存）
-    batch_size = 32  # 大幅增加batch size (8→32)，充分利用显存
-    warmup_steps = 300  # 进一步减少warmup (500→300)
-    epochs = 80  # 增加训练轮数 (50→80)，小模型需要更多epoch
+    # 模型训练超参数（充分利用80GB×5显存）
+    batch_size = 128  # 继续增大batch size (32→128)，充分利用A800显存
+    warmup_steps = 200  # 减少warmup步数，大batch收敛快
+    epochs = 80  # 增加训练轮数，小模型需要更多epoch
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
-    learning_rate = 5e-4  # 提高学习率（3e-4→5e-4），大batch需要更高学习率
+    learning_rate = 1e-3  # 提高学习率（5e-4→1e-3），超大batch需要更高学习率
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
