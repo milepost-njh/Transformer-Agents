@@ -2142,6 +2142,10 @@ def evaluate_on_val(model, val_loader, device, moe_config=None, tokenizer=None):
         logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
         acc = token_accuracy(labels, logits, pad_id=tokenizer.pad_token_id)
         
+        # 处理 DataParallel 返回的多个 loss 值
+        if loss.dim() > 0:
+            loss = loss.mean()
+        
         total_loss += loss.item() * input_ids.size(0)
         total_acc += acc * input_ids.size(0)
         total_count += input_ids.size(0)
