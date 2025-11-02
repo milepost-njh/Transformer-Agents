@@ -1,4 +1,5 @@
 # TensorBoard logs and runs
+tok_zh/
 runs/
 
 # Python cache
