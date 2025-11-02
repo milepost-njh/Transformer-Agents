@@ -2430,11 +2430,11 @@ if __name__ == "__main__":
             mtp_config = None
 
     # 4. 构建过滤后的数据
-    # 定义数据缓存文件路径
+    # 定义数据缓存文件路径（包含 max_length 以避免配置不匹配）
     cache_dir = "data_cache"
     os.makedirs(cache_dir, exist_ok=True)
-    train_cache_file = os.path.join(cache_dir, f"train_{'kimi' if use_kimi else 'seq2seq'}.pkl")
-    val_cache_file = os.path.join(cache_dir, f"val_{'kimi' if use_kimi else 'seq2seq'}.pkl")
+    train_cache_file = os.path.join(cache_dir, f"train_{'kimi' if use_kimi else 'seq2seq'}_len{max_length}.pkl")
+    val_cache_file = os.path.join(cache_dir, f"val_{'kimi' if use_kimi else 'seq2seq'}_len{max_length}.pkl")
     
     # 构建过滤后的样本（这部分逻辑从 build_dataloaders 中提取）
     def encode_with_bos_eos(tokenizer, text: str):
