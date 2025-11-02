@@ -1744,9 +1744,21 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     if loss.dim() > 0:
         loss = loss.mean()
 
+    # 调试：打印第一个batch的信息
+    if global_step == 1:
+        logger.info(f"📊 First batch debug info:")
+        logger.info(f"  - input_ids shape: {input_ids.shape}, min: {input_ids.min()}, max: {input_ids.max()}")
+        logger.info(f"  - labels shape: {labels.shape}, min: {labels.min()}, max: {labels.max()}")
+        logger.info(f"  - logits shape: {logits.shape}, contains NaN: {torch.isnan(logits).any()}, contains Inf: {torch.isinf(logits).any()}")
+        logger.info(f"  - logits min: {logits.min().item():.4f}, max: {logits.max().item():.4f}, mean: {logits.mean().item():.4f}")
+        logger.info(f"  - loss: {loss.item():.4f}")
+
     # 检测NaN或Inf损失
     if not torch.isfinite(loss):
         logger.error(f"Loss is {loss.item()}, skipping this batch")
+        # 额外调试信息
+        logger.error(f"  - logits contains NaN: {torch.isnan(logits).any()}")
+        logger.error(f"  - logits contains Inf: {torch.isinf(logits).any()}")
         return 0.0, 0.0
 
     optimizer.zero_grad(set_to_none=True)
@@ -2237,12 +2249,12 @@ if __name__ == "__main__":
 
     # 模型训练超参数
     batch_size = 4  # 批处理数 (max_length=4096 时需要更小的 batch_size 避免OOM)
-    warmup_steps = 4000  # warmup steps数
+    warmup_steps = 8000  # 增加 warmup 以稳定训练初期
     epochs = 30  # 训练轮数
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
-    learning_rate = 1e-4  # 进一步降低学习率以稳定MoE训练，防止梯度爆炸
+    learning_rate = 1e-5  # 大幅降低学习率以稳定MoE+MLA训练，防止NaN
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
@@ -2375,6 +2387,16 @@ if __name__ == "__main__":
         )
         
         model = KimiLinearForCausalLM(kimi_config)
+        
+        # 检查模型权重是否包含 NaN 或 Inf
+        has_nan_inf = False
+        for name, param in model.named_parameters():
+            if torch.isnan(param).any() or torch.isinf(param).any():
+                logger.error(f"⚠️ 参数 {name} 包含 NaN 或 Inf！")
+                has_nan_inf = True
+        if not has_nan_inf:
+            logger.info("✅ 模型权重检查通过：无 NaN 或 Inf")
+        
         logger.info("✅ Kimi 因果语言模型初始化完成")
         mtp_config = None  # Kimi模型不使用MTP
         
