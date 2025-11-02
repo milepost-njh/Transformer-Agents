@@ -1860,6 +1860,8 @@ def train_model(
     train_acc_meter = AverageMeter("train_accuracy")
     global_step = 0
     best_val_loss = float('inf')  # 追踪最佳验证集loss
+    patience = 5  # Early stopping: 如果5个epoch验证loss不下降就停止
+    patience_counter = 0  # 计数器
 
     for epoch in range(epochs):
         try:
@@ -1986,6 +1988,7 @@ def train_model(
             # 如果是最佳模型，额外保存一份best checkpoint
             if validate_loss < best_val_loss:
                 best_val_loss = validate_loss
+                patience_counter = 0  # 重置计数器
                 save_ckpt(
                     model=model,
                     optimizer=optimizer,
@@ -1997,6 +2000,15 @@ def train_model(
                     use_multi_gpu=use_multi_gpu
                 )
                 logger.info(f"🏆 New best model! Validation Loss: {validate_loss:.4f} (saved as best.pt)")
+            else:
+                patience_counter += 1
+                logger.info(f"⚠️  Validation loss没有改善 ({patience_counter}/{patience})")
+                
+                # Early stopping检查
+                if patience_counter >= patience:
+                    logger.info(f"🛑 Early stopping触发！连续{patience}个epoch验证loss未改善")
+                    logger.info(f"💾 最佳验证loss: {best_val_loss:.4f}")
+                    break
 
         except Exception as e:
             import traceback
@@ -2339,24 +2351,25 @@ if __name__ == "__main__":
     special_tokens = special_tokens  # 特殊符号
     max_length = 4096  # 最大序列长度（心理咨询对话平均~2442 tokens，最大~3901，用4096保留100%数据）
 
-    # 模型训练超参数（充分利用80GB×5显存）
-    batch_size = 128  # 继续增大batch size (32→128)，充分利用A800显存
-    warmup_steps = 200  # 减少warmup步数，大batch收敛快
-    epochs = 80  # 增加训练轮数，小模型需要更多epoch
+    # 模型训练超参数（充分利用显存 + 防止过拟合）
+    batch_size = 256  # 继续增大 (128→256)，充分利用显存 + 大batch有正则化效果
+    warmup_steps = 100  # 减少warmup，大batch收敛快
+    epochs = 30  # 减少epoch (80→30)，防止过拟合
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
-    learning_rate = 1e-3  # 提高学习率（5e-4→1e-3），超大batch需要更高学习率
+    learning_rate = 1.5e-3  # 提高学习率 (1e-3→1.5e-3)，超大batch需要更高LR
     betas = (0.9, 0.999)
     eps = 1e-8
-    weight_decay = 0.01
+    weight_decay = 0.1  # 大幅增加weight_decay (0.01→0.1)，强力防止过拟合
+    label_smoothing = 0.1  # 添加label smoothing，防止过拟合
 
     # 模型结构（针对小数据集优化：4760条数据）
     num_layers = 4  # 减少层数 (8→4)，小数据集不需要太深的模型
     d_model = 256  # 减少维度 (512→256)，降低参数量
     dff = 1024  # 减少FFN维度 (2048→1024)
     num_heads = 4  # 减少注意力头 (8→4)
-    dropout_rate = 0.1
+    dropout_rate = 0.2  # 增大dropout (0.1→0.2)，防止过拟合
     
     # # KV Cache 计算相关参数
     # head_dim = d_model // num_heads  # 每个Head的向量维度 = 512/8 = 64 (对应Qwen-72B的128)
@@ -2802,7 +2815,11 @@ if __name__ == "__main__":
     # PyTorch 的 CrossEntropyLoss 默认就支持 from_logits=True
     PAD_ID_TGT = tokenizer.pad_token_id
     global loss_object
-    loss_object = nn.CrossEntropyLoss(reduction="none", ignore_index=PAD_ID_TGT)
+    loss_object = nn.CrossEntropyLoss(
+        reduction="none", 
+        ignore_index=PAD_ID_TGT,
+        label_smoothing=label_smoothing  # 添加label smoothing防止过拟合
+    )
 
     # 8. 开始训练
     logger.info(f"✅ 开始训练: lr={learning_rate}, epochs={epochs}, batch_size={batch_size}")
