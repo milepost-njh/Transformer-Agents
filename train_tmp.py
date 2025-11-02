@@ -1823,6 +1823,7 @@ def train_model(
     train_loss_meter = AverageMeter("train_loss")
     train_acc_meter = AverageMeter("train_accuracy")
     global_step = 0
+    best_val_loss = float('inf')  # 追踪最佳验证集loss
 
     for epoch in range(epochs):
         try:
@@ -1934,7 +1935,7 @@ def train_model(
 
             logger.info(f"Validation - Epoch {epoch + 1} Loss: {validate_loss:.4f}, Accuracy: {validate_acc:.4f}\n")
 
-            # 每个epoch结束后保存checkpoint
+            # 每个epoch结束后保存latest checkpoint
             save_ckpt(
                 model=model,
                 optimizer=optimizer,
@@ -1945,6 +1946,21 @@ def train_model(
                 tag="latest",
                 use_multi_gpu=use_multi_gpu
             )
+            
+            # 如果是最佳模型，额外保存一份best checkpoint
+            if validate_loss < best_val_loss:
+                best_val_loss = validate_loss
+                save_ckpt(
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    epoch=epoch + 1,
+                    step=global_step,
+                    ckpt_dir=ckpt_dir,
+                    tag="best",
+                    use_multi_gpu=use_multi_gpu
+                )
+                logger.info(f"🏆 New best model! Validation Loss: {validate_loss:.4f} (saved as best.pt)")
 
         except Exception as e:
             import traceback
