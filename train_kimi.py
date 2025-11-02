@@ -2351,41 +2351,41 @@ if __name__ == "__main__":
     special_tokens = special_tokens  # 特殊符号
     max_length = 4096  # 最大序列长度（心理咨询对话平均~2442 tokens，最大~3901，用4096保留100%数据）
 
-    # 模型训练超参数（充分利用显存 + 防止过拟合）
-    batch_size = 256  # 继续增大 (128→256)，充分利用显存 + 大batch有正则化效果
-    warmup_steps = 100  # 减少warmup，大batch收敛快
-    epochs = 30  # 减少epoch (80→30)，防止过拟合
+    # 模型训练超参数（最后尝试：让模型充分拟合）
+    batch_size = 128  # 减小batch (256→128)，增大模型后显存可能不够
+    warmup_steps = 200  # 增加warmup (100→200)
+    epochs = 50  # 增加epoch (30→50)，给模型更多时间学习
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
-    learning_rate = 1.5e-3  # 提高学习率 (1e-3→1.5e-3)，超大batch需要更高LR
+    learning_rate = 5e-4  # 降低学习率 (1.5e-3→5e-4)，更稳定地训练
     betas = (0.9, 0.999)
     eps = 1e-8
-    weight_decay = 0.1  # 大幅增加weight_decay (0.01→0.1)，强力防止过拟合
-    label_smoothing = 0.1  # 添加label smoothing，防止过拟合
+    weight_decay = 0.01  # 减小weight_decay (0.1→0.01)，允许模型更好地拟合
+    label_smoothing = 0.05  # 减小label_smoothing (0.1→0.05)
 
-    # 模型结构（针对小数据集优化：4760条数据）
-    num_layers = 4  # 减少层数 (8→4)，小数据集不需要太深的模型
-    d_model = 256  # 减少维度 (512→256)，降低参数量
-    dff = 1024  # 减少FFN维度 (2048→1024)
-    num_heads = 4  # 减少注意力头 (8→4)
-    dropout_rate = 0.2  # 增大dropout (0.1→0.2)，防止过拟合
+    # 模型结构（最后一次尝试：稍微增大模型）
+    num_layers = 6  # 增加层数 (4→6)
+    d_model = 512  # 增加维度 (256→512)
+    dff = 2048  # 增加FFN维度 (1024→2048)
+    num_heads = 8  # 增加注意力头 (4→8)
+    dropout_rate = 0.15  # 稍微减小dropout (0.2→0.15)，让模型更容易拟合
     
     # # KV Cache 计算相关参数
     # head_dim = d_model // num_heads  # 每个Head的向量维度 = 512/8 = 64 (对应Qwen-72B的128)
     
 
-    # MoE 配置 - 针对小数据集优化
+    # MoE 配置 - 增大模型容量
     use_moe = True  # 是否使用 MoE
     moe_config = MoEConfig(
-        num_experts=4,  # 减少专家数量 (8→4)，降低参数量
+        num_experts=8,  # 恢复专家数量 (4→8)
         num_experts_per_tok=2,
         hidden_size=d_model,
         intermediate_size=dff,
         hidden_act="silu",
         router_aux_loss_coef=0.005,  # 降低辅助损失权重以减少梯度波动
         use_moe=use_moe,
-        n_routed_experts=4,  # 与 num_experts 保持一致
+        n_routed_experts=8,  # 与 num_experts 保持一致
         routed_scaling_factor=0.8,  # 降低缩放因子以稳定训练
         scoring_func="sigmoid",
         topk_method="noaux_tc",  # 现在支持训练模式
