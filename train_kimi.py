@@ -1800,13 +1800,13 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
 
-    # 梯度裁剪（更激进的裁剪以应对大梯度）
+    # 梯度裁剪（放宽裁剪阈值，原0.2太严格导致梯度被裁剪98%）
     model_for_grad_clip = transformer.module if use_multi_gpu else transformer
-    grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.2)
+    grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=1.0)
 
     # 只在前 100 步和每 100 步打印一次梯度警告，避免日志刷屏
     if grad_norm > 5.0 and (global_step <= 100 or global_step % 100 == 0):
-        logger.warning(f"Large gradient norm detected: {grad_norm:.4f} (clipped to 0.2)")
+        logger.warning(f"Large gradient norm detected: {grad_norm:.4f} (clipped to 1.0)")
 
     # 检查NaN梯度
     has_nan_grad = False
@@ -2341,12 +2341,12 @@ if __name__ == "__main__":
 
     # 模型训练超参数
     batch_size = 4  # 批处理数 (max_length=4096 时需要更小的 batch_size 避免OOM)
-    warmup_steps = 8000  # 增加 warmup 以稳定训练初期
-    epochs = 30  # 训练轮数
+    warmup_steps = 500  # 减少warmup步数（原8000太长，每epoch只有1190步）
+    epochs = 50  # 增加训练轮数以补偿小数据集
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
-    learning_rate = 5e-6  # 极低学习率以稳定MoE+MLA训练（梯度范数~10需要更低lr）
+    learning_rate = 2e-5  # 提高学习率（原5e-6太低，配合强梯度裁剪导致训练太慢）
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
@@ -2449,7 +2449,7 @@ if __name__ == "__main__":
             num_attention_heads=num_heads,
             num_key_value_heads=num_heads,  # 使用MQA/GQA时可以减少
             hidden_act="silu",
-            initializer_range=0.01,  # 降低初始化范围以减小梯度范数
+            initializer_range=0.02,  # 初始化范围（原0.01可能太小）
             rms_norm_eps=1e-6,
             use_cache=False,  # 训练时不使用cache
             pad_token_id=tokenizer.pad_token_id,
