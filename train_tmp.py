@@ -1940,6 +1940,7 @@ def train_model(
                     scheduler=scheduler,
                     epoch=epoch,
                     step=global_step,
+                    ckpt_dir=ckpt_dir,  # 使用正确的 checkpoint 目录
                     tag="error",
                     use_multi_gpu=use_multi_gpu
                 )
