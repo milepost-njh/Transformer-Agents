@@ -2339,40 +2339,40 @@ if __name__ == "__main__":
     special_tokens = special_tokens  # 特殊符号
     max_length = 4096  # 最大序列长度（心理咨询对话平均~2442 tokens，最大~3901，用4096保留100%数据）
 
-    # 模型训练超参数
-    batch_size = 4  # 批处理数 (max_length=4096 时需要更小的 batch_size 避免OOM)
-    warmup_steps = 500  # 减少warmup步数（原8000太长，每epoch只有1190步）
-    epochs = 50  # 增加训练轮数以补偿小数据集
+    # 模型训练超参数（针对小模型优化）
+    batch_size = 8  # 模型更小，可以增加batch size (4→8)，加速训练
+    warmup_steps = 300  # 进一步减少warmup (500→300)
+    epochs = 80  # 增加训练轮数 (50→80)，小模型需要更多epoch
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
-    learning_rate = 2e-5  # 提高学习率（原5e-6太低，配合强梯度裁剪导致训练太慢）
+    learning_rate = 3e-4  # 提高学习率（2e-5→3e-4），小模型可以用更高学习率
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
 
-    # 模型结构
-    num_layers = 8  # 模型层数 (对应Qwen-72B的80层)
-    d_model = 512  # hidden-size (对应Qwen-72B的4096)
-    dff = 2048
-    num_heads = 8  # 注意力头数 (对应Qwen-72B的64个Head)
+    # 模型结构（针对小数据集优化：4760条数据）
+    num_layers = 4  # 减少层数 (8→4)，小数据集不需要太深的模型
+    d_model = 256  # 减少维度 (512→256)，降低参数量
+    dff = 1024  # 减少FFN维度 (2048→1024)
+    num_heads = 4  # 减少注意力头 (8→4)
     dropout_rate = 0.1
     
     # # KV Cache 计算相关参数
     # head_dim = d_model // num_heads  # 每个Head的向量维度 = 512/8 = 64 (对应Qwen-72B的128)
     
 
-    # MoE 配置 - 优化以减少梯度不稳定
+    # MoE 配置 - 针对小数据集优化
     use_moe = True  # 是否使用 MoE
     moe_config = MoEConfig(
-        num_experts=8,
+        num_experts=4,  # 减少专家数量 (8→4)，降低参数量
         num_experts_per_tok=2,
         hidden_size=d_model,
         intermediate_size=dff,
         hidden_act="silu",
         router_aux_loss_coef=0.005,  # 降低辅助损失权重以减少梯度波动
         use_moe=use_moe,
-        n_routed_experts=8,
+        n_routed_experts=4,  # 与 num_experts 保持一致
         routed_scaling_factor=0.8,  # 降低缩放因子以稳定训练
         scoring_func="sigmoid",
         topk_method="noaux_tc",  # 现在支持训练模式
