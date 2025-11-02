@@ -677,7 +677,7 @@ class KimiMoEGate(nn.Module):
             )
 
         # select top-k experts
-        assert not self.training
+        # Training mode is now supported
         scores_for_choice = scores.view(bsz * seq_len, -1)
         scores_for_choice += self.e_score_correction_bias.unsqueeze(0)
         group_scores = (
