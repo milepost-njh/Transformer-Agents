@@ -2072,6 +2072,14 @@ def evaluate_on_val(model, val_loader, device, moe_config=None, tokenizer=None):
     total_loss = 0
     total_acc = 0
     total_count = 0
+    
+    # 使用 autocast 确保 Flash Attention 兼容
+    use_autocast = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    if use_autocast:
+        autocast_ctx = torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    else:
+        from contextlib import nullcontext
+        autocast_ctx = nullcontext()
 
     for batch in val_loader:
         # Kimi因果语言模型模式
@@ -2081,12 +2089,13 @@ def evaluate_on_val(model, val_loader, device, moe_config=None, tokenizer=None):
         labels = input_ids.clone()
         labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
         
-        outputs = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels,
-            use_cache=False,
-        )
+        with autocast_ctx:
+            outputs = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=labels,
+                use_cache=False,
+            )
         
         if hasattr(outputs, 'loss') and outputs.loss is not None:
             loss = outputs.loss
