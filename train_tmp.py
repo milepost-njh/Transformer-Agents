@@ -1768,7 +1768,8 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     model_for_grad_clip = transformer.module if use_multi_gpu else transformer
     grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.2)
 
-    if grad_norm > 5.0:
+    # 只在前 100 步和每 100 步打印一次梯度警告，避免日志刷屏
+    if grad_norm > 5.0 and (global_step <= 100 or global_step % 100 == 0):
         logger.warning(f"Large gradient norm detected: {grad_norm:.4f} (clipped to 0.2)")
 
     # 检查NaN梯度
@@ -1892,6 +1893,29 @@ def train_model(
                         f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f} "
                         f"GradNorm {grad_norm_val:.4f} LR {current_lr:.2e}{memory_info}"
                     )
+                
+                # 每 1000 步保存一次 checkpoint，只保留最近 3 个
+                if global_step % 1000 == 0:
+                    # 保存新的 checkpoint
+                    ckpt_path = save_ckpt(
+                        model=model,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        epoch=epoch,
+                        step=global_step,
+                        ckpt_dir=ckpt_dir,
+                        tag=f"step{global_step}",
+                        use_multi_gpu=use_multi_gpu
+                    )
+                    logger.info(f"💾 Checkpoint saved at step {global_step}: {ckpt_path}")
+                    
+                    # 只保留最近 3 个 step checkpoint（避免磁盘占用过大）
+                    import glob
+                    step_ckpts = sorted(glob.glob(os.path.join(ckpt_dir, "step*.pt")))
+                    if len(step_ckpts) > 3:
+                        for old_ckpt in step_ckpts[:-3]:
+                            os.remove(old_ckpt)
+                            logger.info(f"🗑️  Removed old checkpoint: {old_ckpt}")
 
             # 记录每个 epoch 的平均指标到 TensorBoard
             writer.add_scalar('Epoch/Train_Loss', train_loss_meter.avg, epoch + 1)
@@ -2355,7 +2379,7 @@ if __name__ == "__main__":
             num_attention_heads=num_heads,
             num_key_value_heads=num_heads,  # 使用MQA/GQA时可以减少
             hidden_act="silu",
-            initializer_range=0.02,
+            initializer_range=0.01,  # 降低初始化范围以减小梯度范数
             rms_norm_eps=1e-6,
             use_cache=False,  # 训练时不使用cache
             pad_token_id=tokenizer.pad_token_id,
