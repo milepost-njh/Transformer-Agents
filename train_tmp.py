@@ -1759,18 +1759,17 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         # 额外调试信息
         logger.error(f"  - logits contains NaN: {torch.isnan(logits).any()}")
         logger.error(f"  - logits contains Inf: {torch.isinf(logits).any()}")
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
 
-    # 梯度裁剪
+    # 梯度裁剪（更激进的裁剪以应对大梯度）
     model_for_grad_clip = transformer.module if use_multi_gpu else transformer
-    grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.5)
+    grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.2)
 
     if grad_norm > 5.0:
-        logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
-        torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.1)
+        logger.warning(f"Large gradient norm detected: {grad_norm:.4f} (clipped to 0.2)")
 
     # 检查NaN梯度
     has_nan_grad = False
@@ -1782,7 +1781,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
 
     if has_nan_grad:
         logger.error("Skipping this batch due to NaN gradients")
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     optimizer.step()
     if scheduler is not None:
@@ -1790,7 +1789,7 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
 
     # 计算准确率
     acc = token_accuracy(labels, logits, pad_id=tokenizer.pad_token_id)
-    return loss.item(), acc
+    return loss.item(), acc, grad_norm.item()
 
 
 def train_model(
@@ -1833,7 +1832,7 @@ def train_model(
 
             for batch_idx, batch in enumerate(train_loader):
                 global_step += 1
-                loss_val, acc_val = train_step(
+                loss_val, acc_val, grad_norm_val = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
                     moe_config=moe_config, use_multi_gpu=use_multi_gpu, tokenizer=tokenizer, global_step=global_step
                 )
@@ -1843,6 +1842,7 @@ def train_model(
                 # 记录到 TensorBoard
                 writer.add_scalar('Train/Loss', loss_val, global_step)
                 writer.add_scalar('Train/Accuracy', acc_val, global_step)
+                writer.add_scalar('Train/Gradient_Norm', grad_norm_val, global_step)
 
                 # 记录学习率
                 if scheduler is not None:
@@ -1888,8 +1888,9 @@ def train_model(
 
                     
                     logger.info(
-                        f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step}"
-                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f}{memory_info}"
+                        f"Epoch {epoch + 1} Batch {batch_idx} global_step {global_step} "
+                        f"Loss {train_loss_meter.avg:.4f} Accuracy {train_acc_meter.avg:.4f} "
+                        f"GradNorm {grad_norm_val:.4f} LR {current_lr:.2e}{memory_info}"
                     )
 
             # 记录每个 epoch 的平均指标到 TensorBoard
@@ -2254,7 +2255,7 @@ if __name__ == "__main__":
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数
-    learning_rate = 1e-5  # 大幅降低学习率以稳定MoE+MLA训练，防止NaN
+    learning_rate = 5e-6  # 极低学习率以稳定MoE+MLA训练（梯度范数~10需要更低lr）
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
