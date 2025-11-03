@@ -1864,11 +1864,10 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         )
     
     # Kimi模型返回 CausalLMOutputWithPast，包含loss
-    if hasattr(outputs, 'loss') and outputs.loss is not None:
-        loss = outputs.loss
-    else:
-        logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-        loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=None)
+    # ⚠️ 重要：不使用Kimi模型自己计算的loss，因为不确定它的ignore_index设置
+    # 统一使用外部loss_function，确保ignore_index=-100
+    logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+    loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=None)
     
     logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
 
@@ -2252,13 +2251,9 @@ def evaluate_on_val(model, val_loader, device, moe_config=None, tokenizer=None):
                 use_cache=False,
             )
         
-        if hasattr(outputs, 'loss') and outputs.loss is not None:
-            loss = outputs.loss
-        else:
-            logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
-            loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=None)
-        
+        # 统一使用外部loss_function，确保ignore_index=-100
         logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+        loss = loss_function(labels, logits, router_logits=None, moe_config=moe_config, mtp_logits=None, mtp_config=None)
         acc = token_accuracy(labels, logits, pad_id=tokenizer.pad_token_id)
         
         # 处理 DataParallel 返回的多个 loss 值
