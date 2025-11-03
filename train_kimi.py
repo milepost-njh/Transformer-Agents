@@ -279,18 +279,40 @@ def load_translation_dataset(train_path: str, val_path: str, delimiter: str = "\
         train_dataset, val_dataset
     """
     logger.info("开始加载翻译数据集...")
-    dataset = load_dataset(
-        "csv",
-        data_files={
-            "train": train_path,
-            "validation": val_path
-        },
-        column_names=["pt", "en"],
-        delimiter=delimiter
-    )
+    
+    # 先加载查看第一行是否是列名
+    with open(train_path, 'r', encoding='utf-8') as f:
+        first_line = f.readline().strip()
+        logger.info(f"数据集第一行: {first_line[:100]}...")  # 只显示前100个字符
+    
+    # 如果第一行是 "pt\ten" 或 "por\ten"，说明有表头
+    has_header = first_line.lower().startswith(('pt\t', 'por\t'))
+    
+    if has_header:
+        logger.info("检测到 CSV 表头，使用 header='infer'")
+        dataset = load_dataset(
+            "csv",
+            data_files={
+                "train": train_path,
+                "validation": val_path
+            },
+            delimiter=delimiter
+        )
+    else:
+        logger.info("未检测到表头，使用自定义列名 ['pt', 'en']")
+        dataset = load_dataset(
+            "csv",
+            data_files={
+                "train": train_path,
+                "validation": val_path
+            },
+            column_names=["pt", "en"],
+            delimiter=delimiter
+        )
 
     logger.info(f"✅ 翻译数据集加载完成: 训练集 {len(dataset['train'])} 条, 验证集 {len(dataset['validation'])} 条")
-    logger.info(f"示例数据 -> pt: {dataset['train'][0]['pt']} | en: {dataset['train'][0]['en']}")
+    logger.info(f"数据集列名: {dataset['train'].column_names}")
+    logger.info(f"示例数据 -> pt: {dataset['train'][0]['pt'][:50]}... | en: {dataset['train'][0]['en'][:50]}...")
 
     return dataset["train"], dataset["validation"]
 
@@ -2428,7 +2450,7 @@ if __name__ == "__main__":
     vocab_size = 2 ** 13  # 词表大小 (8192)
     min_freq = 2  # 最小词频
     special_tokens = special_tokens  # 特殊符号
-    max_length = 64  # 翻译任务最大序列长度（与train_moe_mla_parallel.py一致）
+    max_length = 128  # 翻译任务最大序列长度（增加到128以容纳更长的翻译对）
 
     # ======== 模型训练超参数（与train_moe_mla_parallel.py保持一致）========
     batch_size = 64  # 与参考脚本保持一致
@@ -2583,13 +2605,21 @@ if __name__ == "__main__":
         
         model = KimiLinearForCausalLM(kimi_config)
         
-        # 检查模型权重是否包含 NaN 或 Inf
+        # 检查并修复模型权重中的 NaN 或 Inf
         has_nan_inf = False
         for name, param in model.named_parameters():
             if torch.isnan(param).any() or torch.isinf(param).any():
-                logger.error(f"⚠️ 参数 {name} 包含 NaN 或 Inf！")
+                logger.warning(f"⚠️ 参数 {name} 包含 NaN 或 Inf，正在重新初始化...")
+                # 重新初始化该参数
+                if 'bias' in name:
+                    torch.nn.init.zeros_(param)
+                else:
+                    torch.nn.init.normal_(param, mean=0.0, std=0.02)
                 has_nan_inf = True
-        if not has_nan_inf:
+        
+        if has_nan_inf:
+            logger.info("✅ 已修复所有 NaN/Inf 参数")
+        else:
             logger.info("✅ 模型权重检查通过：无 NaN 或 Inf")
         
         logger.info("✅ Kimi 因果语言模型初始化完成")
@@ -2785,27 +2815,27 @@ if __name__ == "__main__":
                 "en_input_ids": en_input_ids,
                 "en_attention_mask": en_attention_mask,
             }
-    
-    # 创建 DataLoader
-    train_loader2 = DataLoader(
-        filtered_train_dataset,
-        batch_size=batch_size,
-        shuffle=True,  # 训练集需要shuffle
-        collate_fn=collate_padded,
-        num_workers=0,
-        pin_memory=True if torch.cuda.is_available() else False,
-    )
-    val_loader2 = DataLoader(
-        filtered_val_dataset,
-        batch_size=batch_size,
-        shuffle=False,  # 验证集不需要shuffle
-        collate_fn=collate_padded,
-        num_workers=0,
-        pin_memory=True if torch.cuda.is_available() else False,
-    )
-    
-    # 测试DataLoader
-    test_dataloaders(train_loader2, val_loader2)
+        
+        # 创建 DataLoader (这部分代码属于 else 分支)
+        train_loader2 = DataLoader(
+            filtered_train_dataset,
+            batch_size=batch_size,
+            shuffle=True,  # 训练集需要shuffle
+            collate_fn=collate_padded,
+            num_workers=0,
+            pin_memory=True if torch.cuda.is_available() else False,
+        )
+        val_loader2 = DataLoader(
+            filtered_val_dataset,
+            batch_size=batch_size,
+            shuffle=False,  # 验证集不需要shuffle
+            collate_fn=collate_padded,
+            num_workers=0,
+            pin_memory=True if torch.cuda.is_available() else False,
+        )
+        
+        # 测试DataLoader
+        test_dataloaders(train_loader2, val_loader2)
     
     # 使用DP包装模型
     model = wrap_model_for_multi_gpu(model, use_multi_gpu, gpu_count)
