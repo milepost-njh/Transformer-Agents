@@ -1794,8 +1794,20 @@ def create_masks(
 
 @torch.no_grad()
 def token_accuracy(real, pred, pad_id):
+    """
+    计算token级别的准确率
+    
+    Args:
+        real: (B, L) 真实标签，可能包含-100（需要忽略的位置）
+        pred: (B, L, V) 预测logits
+        pad_id: padding token的id（也需要忽略）
+    
+    Returns:
+        准确率（0-1之间的浮点数）
+    """
     pred_ids = pred.argmax(dim=-1)  # (B, L)
-    mask = (real != pad_id)
+    # 同时mask掉pad_id和-100（-100是labels中用于忽略的特殊值）
+    mask = (real != pad_id) & (real != -100)
     correct = ((pred_ids == real) & mask).sum().item()
     denom = mask.sum().item()
     return correct / max(1, denom)
@@ -2223,8 +2235,14 @@ def evaluate_on_val(model, val_loader, device, moe_config=None, tokenizer=None):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
         
-        labels = input_ids.clone()
-        labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
+        # 翻译模式：使用batch中提供的labels（已经mask掉prompt部分）
+        # 对话模式：如果batch没有labels，则自动生成（向右移位）
+        if "labels" in batch:
+            labels = batch["labels"].to(device)
+        else:
+            # 对话模式（向右移位生成labels）
+            labels = input_ids.clone()
+            labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
         
         with autocast_ctx:
             outputs = model(
@@ -2908,11 +2926,12 @@ if __name__ == "__main__":
 
     # 7. 自定义损失函数
     # PyTorch 的 CrossEntropyLoss 默认就支持 from_logits=True
-    PAD_ID_TGT = tokenizer.pad_token_id
+    # 注意：对于翻译任务，labels中用-100来mask prompt部分，所以ignore_index应该设为-100
+    # 而不是PAD_ID_TGT，这样才能正确忽略prompt部分的损失
     global loss_object
     loss_object = nn.CrossEntropyLoss(
         reduction="none", 
-        ignore_index=PAD_ID_TGT,
+        ignore_index=-100,  # 标准做法：忽略-100位置的损失
         label_smoothing=label_smoothing  # 添加label smoothing防止过拟合
     )
 
