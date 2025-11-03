@@ -2629,6 +2629,39 @@ if __name__ == "__main__":
         else:
             logger.info("✅ 模型权重检查通过：无 NaN 或 Inf")
         
+        # 统计模型参数量
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        
+        logger.info("=" * 80)
+        logger.info("📊 Kimi 模型参数统计")
+        logger.info("=" * 80)
+        logger.info(f"   总参数: {total_params:,}")
+        logger.info(f"   可训练参数: {trainable_params:,}")
+        logger.info(f"   不可训练参数: {total_params - trainable_params:,}")
+        logger.info(f"   模型大小: {total_params * 4 / 1024 / 1024:.2f} MB (FP32)")
+        logger.info(f"   模型大小: {total_params * 2 / 1024 / 1024:.2f} MB (FP16/BF16)")
+        logger.info("")
+        logger.info("🔧 模型配置:")
+        logger.info(f"   隐藏层数: {num_layers}")
+        logger.info(f"   隐藏维度: {d_model}")
+        logger.info(f"   注意力头数: {num_heads}")
+        logger.info(f"   FFN维度: {dff}")
+        logger.info(f"   词表大小: {vocab_size_model}")
+        logger.info("")
+        logger.info("🔧 MoE配置:")
+        logger.info(f"   专家数量: {moe_config.num_experts}")
+        logger.info(f"   每token激活专家: {moe_config.num_experts_per_tok}")
+        logger.info(f"   路由专家数量: {moe_config.n_routed_experts}")
+        logger.info("")
+        logger.info("🔧 MLA配置:")
+        logger.info(f"   使用MLA: {use_mla}")
+        logger.info(f"   KV LoRA Rank: {kv_lora_rank}")
+        logger.info(f"   QK Nope Head Dim: {head_dim // 2}")
+        logger.info(f"   QK RoPE Head Dim: {head_dim // 2}")
+        logger.info(f"   V Head Dim: {head_dim}")
+        logger.info("=" * 80)
+        
         logger.info("✅ Kimi 因果语言模型初始化完成")
         mtp_config = None  # Kimi模型不使用MTP
         
