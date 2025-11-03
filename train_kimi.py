@@ -2411,8 +2411,8 @@ if __name__ == "__main__":
 
     # ======== 数据文件地址（翻译数据集：葡萄牙语-英语） ========
     # 修改为你的实际数据集路径（数据集需要迁移到当前服务器）
-    train_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_train.csv"
-    val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
+    train_path = "/workspace/tensorflow_datasets/por_en_train.csv"
+    val_path = "/workspace/tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
     
     # 根据模型类型设置不同的checkpoint目录

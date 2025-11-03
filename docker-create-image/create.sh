@@ -1,6 +1,6 @@
 docker run --gpus all -idt \
   --name trs \
   --network host \
-  -v /data4/yszhang/gits/Transformer-Agents:/workspace \
+  -v /data2/workspace/yszhang/train_transformers:/workspace \
   --shm-size=16g \
-  nvcr.io/nvidia/pytorch:25.10-py3
+  trs-migrated:latest
