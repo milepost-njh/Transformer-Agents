@@ -1884,15 +1884,20 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
 
-    # 梯度裁剪（放宽裁剪阈值，原0.2太严格导致梯度被裁剪98%）
+    # 梯度裁剪（与参考脚本完全一致）
     model_for_grad_clip = transformer.module if use_multi_gpu else transformer
-    grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=1.0)
+    grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.5)
 
-    # 只在前 100 步和每 100 步打印一次梯度警告，避免日志刷屏
-    if grad_norm > 5.0 and (global_step <= 100 or global_step % 100 == 0):
-        logger.warning(f"Large gradient norm detected: {grad_norm:.4f} (clipped to 1.0)")
+    # 2. 更严格的梯度监控（与参考脚本一致）
+    if grad_norm > 5.0:
+        if global_step <= 100 or global_step % 100 == 0:
+            logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
+        # 如果梯度范数过大，进一步裁剪到 0.1
+        torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.1)
+        if global_step <= 100 or global_step % 100 == 0:
+            logger.warning(f"Applied additional gradient clipping to 0.1")
 
-    # 检查NaN梯度
+    # 3. 检查NaN梯度
     has_nan_grad = False
     for name, param in model_for_grad_clip.named_parameters():
         if param.grad is not None and torch.isnan(param.grad).any():
@@ -2439,7 +2444,7 @@ if __name__ == "__main__":
     # ======== 模型训练超参数（与train_moe_mla_parallel.py保持一致）========
     batch_size = 64  # 与参考脚本保持一致
     warmup_steps = 4000  # 与参考脚本保持一致
-    epochs = 15  # 与参考脚本保持一致
+    epochs = 20  # 与参考脚本保持一致（原15改为20）
     learning_rate = 1e-4  # 与参考脚本保持一致
     betas = (0.9, 0.999)
     eps = 1e-8
