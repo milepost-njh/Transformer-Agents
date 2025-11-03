@@ -2442,10 +2442,10 @@ if __name__ == "__main__":
     max_length = 128  # 翻译任务最大序列长度（增加到128以容纳更长的翻译对）
 
     # ======== 模型训练超参数（与train_moe_mla_parallel.py保持一致）========
-    batch_size = 64  # 与参考脚本保持一致
+    batch_size = 128  # 增大batch_size充分利用GPU（5卡 × 25.6/卡）
     warmup_steps = 4000  # 与参考脚本保持一致
     epochs = 20  # 与参考脚本保持一致（原15改为20）
-    learning_rate = 1e-4  # 与参考脚本保持一致
+    learning_rate = 2e-4  # batch_size翻倍，learning_rate也翻倍（线性缩放）
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
