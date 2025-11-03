@@ -266,172 +266,132 @@ def set_random_seed(seed: int = 42):
         logger.info(f"   - CUDNN deterministic: True (可能影响性能)")
 
 
-def load_translation_dataset(train_path: str, val_path: str, delimiter: str = "\t"):
+def load_dialogue_dataset(train_path: str, val_path: str):
     """
-    加载葡萄牙语-英语翻译数据集 (TED Talks)
+    加载心理咨询对话数据集 (PsyDTCorpus)
 
     参数:
-        train_path: 训练集 CSV 文件路径
-        val_path: 验证集 CSV 文件路径
-        delimiter: 分隔符，默认制表符 '\t'
+        train_path: 训练集 JSON 文件路径
+        val_path: 验证集 JSON 文件路径
 
     返回:
         train_dataset, val_dataset
     """
-    logger.info("开始加载翻译数据集...")
-    dataset = load_dataset(
-        "csv",
-        data_files={
-            "train": train_path,
-            "validation": val_path
-        },
-        column_names=["pt", "en"],
-        delimiter=delimiter
-    )
+    # 分别加载训练集和验证集，避免列名不匹配问题
+    train_dataset = load_dataset("json", data_files=train_path, split="train")
+    val_dataset = load_dataset("json", data_files=val_path, split="train")
+    
+    # 统一列名：如果验证集有 sample_id，删除它
+    if "sample_id" in val_dataset.column_names:
+        val_dataset = val_dataset.remove_columns(["sample_id"])
 
-    logger.info(f"✅ 翻译数据集加载完成: 训练集 {len(dataset['train'])} 条, 验证集 {len(dataset['validation'])} 条")
-    logger.info(f"示例数据 -> pt: {dataset['train'][0]['pt']} | en: {dataset['train'][0]['en']}")
+    logger.info(f"✅ 数据集加载完成: 训练集 {len(train_dataset)} 条, 验证集 {len(val_dataset)} 条")
 
-    return dataset["train"], dataset["validation"]
+    return train_dataset, val_dataset
 
 
-def train_and_load_tokenizers(
+def train_and_load_tokenizer(
         train_dataset,
-        pt_key="pt",
-        en_key="en",
         vocab_size=2 ** 13,
         min_freq=2,
         special_tokens=["<s>", "<pad>", "</s>", "<unk>", "<mask>"],
-        save_dir_pt="tok_pt",
-        save_dir_en="tok_en",
+        save_dir="tok_zh",
         max_length=1024
 ):
     """
-    训练并加载葡萄牙语和英语的 ByteLevel BPE Tokenizer
+    训练并加载中文对话的 ByteLevel BPE Tokenizer
 
     参数:
-        train_dataset: 数据集 (需包含 pt_key 和 en_key 两列)
-        pt_key: 源语言字段名 (默认 "pt")
-        en_key: 目标语言字段名 (默认 "en")
+        train_dataset: 数据集 (包含 messages 字段)
         vocab_size: 词表大小
         min_freq: 最小词频
         special_tokens: 特殊符号
-        save_dir_pt: 葡语 tokenizer 保存路径
-        save_dir_en: 英语 tokenizer 保存路径
+        save_dir: tokenizer 保存路径
         max_length: 模型最大序列长度
 
     返回:
-        pt_tokenizer, en_tokenizer
+        tokenizer
     """
 
-    def iter_lang(ds, key):
+    def iter_dialogues(ds):
+        """从messages中提取所有对话文本"""
         for ex in ds:
-            txt = ex[key]
-            if isinstance(txt, bytes):
-                txt = txt.decode("utf-8")
-            yield txt
+            messages = ex.get("messages", [])
+            for msg in messages:
+                content = msg.get("content", "")
+                if isinstance(content, bytes):
+                    content = content.decode("utf-8")
+                if content.strip():
+                    yield content
 
     # 初始化 tokenizer
-    pt_bbpe = ByteLevelBPETokenizer(add_prefix_space=True)
-    en_bbpe = ByteLevelBPETokenizer(add_prefix_space=True)
+    bbpe = ByteLevelBPETokenizer(add_prefix_space=True)
 
     # 训练 tokenizer
-    logger.info(f"训练葡萄牙语 tokenizer...")
-    pt_bbpe.train_from_iterator(
-        iter_lang(train_dataset, pt_key),
-        vocab_size=vocab_size,
-        min_frequency=min_freq,
-        special_tokens=special_tokens,
-    )
-    logger.info(f"训练英语 tokenizer...")
-    en_bbpe.train_from_iterator(
-        iter_lang(train_dataset, en_key),
+    bbpe.train_from_iterator(
+        iter_dialogues(train_dataset),
         vocab_size=vocab_size,
         min_frequency=min_freq,
         special_tokens=special_tokens,
     )
 
     # 保存 vocab/merges + tokenizer.json
-    Path(save_dir_pt).mkdir(exist_ok=True)
-    Path(save_dir_en).mkdir(exist_ok=True)
-    pt_bbpe.save_model(save_dir_pt)
-    en_bbpe.save_model(save_dir_en)
-    pt_bbpe._tokenizer.save(f"{save_dir_pt}/tokenizer.json")
-    en_bbpe._tokenizer.save(f"{save_dir_en}/tokenizer.json")
+    Path(save_dir).mkdir(exist_ok=True)
+    bbpe.save_model(save_dir)
+    bbpe._tokenizer.save(f"{save_dir}/tokenizer.json")
 
     # 用 PreTrainedTokenizerFast 加载
-    pt_tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{save_dir_pt}/tokenizer.json")
-    en_tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{save_dir_en}/tokenizer.json")
+    tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{save_dir}/tokenizer.json")
 
     # 设置特殊符号
-    for tok in (pt_tokenizer, en_tokenizer):
-        tok.pad_token = "<pad>"
-        tok.unk_token = "<unk>"
-        tok.bos_token = "<s>"
-        tok.eos_token = "</s>"
-        tok.mask_token = "<mask>"
-        tok.model_max_length = max_length
-        tok.padding_side = "right"
+    tokenizer.pad_token = "<pad>"
+    tokenizer.unk_token = "<unk>"
+    tokenizer.bos_token = "<s>"
+    tokenizer.eos_token = "</s>"
+    tokenizer.mask_token = "<mask>"
+    tokenizer.model_max_length = max_length
+    tokenizer.padding_side = "right"
 
-    logger.info(f"✅ Tokenizers构建完成: pt词表 {len(pt_tokenizer)}, en词表 {len(en_tokenizer)}")
+    logger.info(f"✅ Tokenizer构建完成: 词表大小 {len(tokenizer)}")
 
-    return pt_tokenizer, en_tokenizer
+    return tokenizer
 
 
-def test_tokenizers(en_tokenizer, pt_tokenizer,
-                    en_sample: str = "Transformer is awesome.",
-                    pt_sample: str = "Transformers são incríveis."):
+def test_tokenizer(tokenizer, sample: str = "你好，我是一位心理咨询师。"):
     """
-    测试英文和葡萄牙语的 tokenizer 编码/解码是否正确
+    测试中文 tokenizer 编码/解码是否正确
 
     参数:
-        en_tokenizer: 英语 tokenizer
-        pt_tokenizer: 葡语 tokenizer
-        en_sample: 英文测试句子
-        pt_sample: 葡文测试句子
+        tokenizer: 中文 tokenizer
+        sample: 测试句子
     """
-    # 测试英文
-    logger.info("=== 英文 Tokenizer 测试 ===")
-    en_ids = en_tokenizer.encode(en_sample, add_special_tokens=False)
-    en_decoded = en_tokenizer.decode(en_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-    logger.info(f"原文: {en_sample}")
-    logger.info(f"Token IDs: {en_ids}")
-    logger.info(f"解码结果: {en_decoded}")
-    assert en_decoded == en_sample, "EN decode != original input!"
+    ids = tokenizer.encode(sample, add_special_tokens=False)
+    decoded = tokenizer.decode(ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
     
-    # 测试葡文
-    logger.info("\n=== 葡萄牙语 Tokenizer 测试 ===")
-    pt_ids = pt_tokenizer.encode(pt_sample, add_special_tokens=False)
-    pt_decoded = pt_tokenizer.decode(pt_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-    logger.info(f"原文: {pt_sample}")
-    logger.info(f"Token IDs: {pt_ids}")
-    logger.info(f"解码结果: {pt_decoded}")
-    assert pt_decoded == pt_sample, "PT decode != original input!"
-    
-    logger.info(f"\n✅ Tokenizers测试通过")
+    logger.info(f"原文: {sample}")
+    logger.info(f"Token IDs: {ids[:20]}..." if len(ids) > 20 else f"Token IDs: {ids}")
+    logger.info(f"解码结果: {decoded}")
+    logger.info(f"✅ Tokenizer测试通过: {len(ids)} tokens")
 
 
-def build_translation_dataloaders(
+def build_dialogue_dataloaders(
         train_dataset,
         val_dataset,
-        pt_tokenizer,
-        en_tokenizer,
+        tokenizer,
         batch_size: int = 64,
-        max_length: int = 64,
+        max_length: int = 512,
         num_workers: int = 0,
         shuffle_train: bool = True,
 ):
     """
-    构建翻译训练的 DataLoader（Decoder-Only 模式，使用统一 tokenizer）
+    构建对话训练的 DataLoader（Kimi因果语言模型模式）
     
-    将翻译对转换为格式："Translate Portuguese to English:\n[pt_text]\nEnglish: [en_text]"
-    只对英文部分计算损失（使用 labels mask）
+    将messages中的system+user+assistant组合成训练序列
 
     参数:
-        train_dataset: HuggingFace Dataset (训练集，包含 pt 和 en 列)
+        train_dataset: HuggingFace Dataset (训练集)
         val_dataset: HuggingFace Dataset (验证集)
-        pt_tokenizer: 葡语 tokenizer
-        en_tokenizer: 英语 tokenizer
+        tokenizer: 中文 tokenizer
         batch_size: 批大小
         max_length: 样本最大长度（超过则过滤）
         num_workers: DataLoader worker 数量
@@ -440,12 +400,21 @@ def build_translation_dataloaders(
     返回:
         train_loader, val_loader
     """
-    
-    # 使用英语tokenizer作为主tokenizer（因为模型输出是英语）
-    # 但需要能处理双语输入，所以我们合并两个tokenizer的词汇
-    # 简化方案：直接使用英语tokenizer处理整个序列
-    tokenizer = en_tokenizer
-    
+
+    def messages_to_text(messages):
+        """将messages转换为训练文本"""
+        text_parts = []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "system":
+                text_parts.append(f"<|im_start|>system\n{content}<|im_end|>")
+            elif role == "user":
+                text_parts.append(f"<|im_start|>user\n{content}<|im_end|>")
+            elif role == "assistant":
+                text_parts.append(f"<|im_start|>assistant\n{content}<|im_end|>")
+        return "\n".join(text_parts)
+
     # 编码 + 添加 BOS/EOS
     def encode_with_bos_eos(tokenizer, text: str):
         ids = tokenizer.encode(text, add_special_tokens=False)
@@ -455,59 +424,26 @@ def build_translation_dataloaders(
             raise ValueError("请确保 tokenizer 设置了 bos_token/eos_token")
         return [bos_id] + ids + [eos_id]
 
-    # 构建翻译序列（带 labels mask）
-    def build_filtered_translation_sequences(hf_split, tokenizer, max_len: int):
-        """
-        对于每个翻译对，构建：
-        - input_ids: 完整序列 [BOS] prompt + pt_text + separator + en_text [EOS]
-        - labels: 只对 en_text 部分保留真实label，其他位置用 -100 mask
-        """
+    # 构建对话序列
+    def build_filtered_sequences(hf_split, tokenizer, max_len: int):
         sequences = []
-        kept, skipped = 0, 0
-        
         for ex in hf_split:
-            pt_text = ex["pt"]
-            en_text = ex["en"]
-            
-            # 构建prompt格式
-            prompt = f"Translate Portuguese to English:\n{pt_text}\nEnglish: "
-            
-            # 分别编码各部分（不添加特殊token）
-            prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
-            en_ids = tokenizer.encode(en_text, add_special_tokens=False)
-            
-            # 组合完整序列：[BOS] + prompt_ids + en_ids + [EOS]
-            bos_id = tokenizer.bos_token_id
-            eos_id = tokenizer.eos_token_id
-            input_ids = [bos_id] + prompt_ids + en_ids + [eos_id]
-            
-            # 检查长度
-            if len(input_ids) <= max_len:
-                # 构建labels：只对英文部分计算损失
-                # prompt部分（包括BOS）mask为-100，英文部分保留真实token
-                prompt_len = len([bos_id] + prompt_ids)
-                labels = [-100] * prompt_len + en_ids + [eos_id]
-                
-                assert len(input_ids) == len(labels), f"长度不匹配: {len(input_ids)} vs {len(labels)}"
-                
-                sequences.append({
-                    "input_ids": input_ids,
-                    "labels": labels
-                })
-                kept += 1
-            else:
-                skipped += 1
-        
-        logger.info(f"过滤结果: kept={kept}, skipped={skipped}, max_length={max_len}")
+            messages = ex.get("messages", [])
+            if not messages:
+                continue
+            text = messages_to_text(messages)
+            ids = encode_with_bos_eos(tokenizer, text)
+            if len(ids) <= max_len:
+                sequences.append(ids)
         return sequences
 
-    train_sequences = build_filtered_translation_sequences(train_dataset, tokenizer, max_length)
-    val_sequences = build_filtered_translation_sequences(val_dataset, tokenizer, max_length)
+    train_sequences = build_filtered_sequences(train_dataset, tokenizer, max_length)
+    val_sequences = build_filtered_sequences(val_dataset, tokenizer, max_length)
     
-    logger.info(f"✅ 翻译数据集构建完成: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+    logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
 
-    # Dataset 类
-    class TranslationDataset(Dataset):
+    # Dataset 类（单一序列）
+    class SequenceDataset(Dataset):
         def __init__(self, sequences): 
             self.sequences = sequences
 
@@ -515,56 +451,47 @@ def build_translation_dataloaders(
             return len(self.sequences)
 
         def __getitem__(self, idx):
-            return self.sequences[idx]
+            return {"input_ids": self.sequences[idx]}
 
     # Collate 函数（动态 padding）
-    def collate_padded_translation(batch, pad_id: int):
-        """
-        batch: list of {"input_ids": [...], "labels": [...]}
-        返回: {"input_ids": tensor, "attention_mask": tensor, "labels": tensor}
-        """
-        def pad_sequence(seqs, pad_value):
+    def collate_padded_sequences(batch, pad_id: int):
+        def pad_block(seqs, pad_value):
             max_len = max(len(s) for s in seqs)
-            padded = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
+            out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
+            attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
             for i, s in enumerate(seqs):
-                padded[i, :len(s)] = torch.tensor(s, dtype=torch.long)
-            return padded
-        
-        input_ids_list = [ex["input_ids"] for ex in batch]
-        labels_list = [ex["labels"] for ex in batch]
-        
-        # Pad sequences
-        input_ids = pad_sequence(input_ids_list, pad_id)
-        labels = pad_sequence(labels_list, -100)  # labels 用 -100 padding
-        
-        # 创建 attention mask
-        attention_mask = (input_ids != pad_id).long()
+                L = len(s)
+                out[i, :L] = torch.tensor(s, dtype=torch.long)
+                attn[i, :L] = 1
+            return out, attn
+
+        ids_list = [ex["input_ids"] for ex in batch]
+        input_ids, attention_mask = pad_block(ids_list, pad_id)
 
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "labels": labels,
         }
 
     # DataLoader
     train_loader = DataLoader(
-        TranslationDataset(train_sequences),
+        SequenceDataset(train_sequences),
         batch_size=batch_size,
         shuffle=shuffle_train,
-        collate_fn=lambda b: collate_padded_translation(b, tokenizer.pad_token_id),
+        collate_fn=lambda b: collate_padded_sequences(b, tokenizer.pad_token_id),
         num_workers=num_workers,
         pin_memory=True if torch.cuda.is_available() else False,
     )
     val_loader = DataLoader(
-        TranslationDataset(val_sequences),
+        SequenceDataset(val_sequences),
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=lambda b: collate_padded_translation(b, tokenizer.pad_token_id),
+        collate_fn=lambda b: collate_padded_sequences(b, tokenizer.pad_token_id),
         num_workers=num_workers,
         pin_memory=True if torch.cuda.is_available() else False,
     )
 
-    return train_loader, val_loader, tokenizer
+    return train_loader, val_loader
 
 
 def test_dataloaders(train_loader, val_loader, show_val: bool = True):
@@ -1808,7 +1735,7 @@ class AverageMeter:
 
 def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, tokenizer=None, global_step=0):
     """
-    训练单步（Kimi因果语言模型 - 支持翻译任务）
+    训练单步（Kimi因果语言模型）
     
     注意：训练时不使用KV-cache
     """
@@ -1824,18 +1751,13 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         from contextlib import nullcontext
         autocast_ctx = nullcontext()
 
-    # 从 batch 中提取数据
+    # Kimi因果语言模型模式
     input_ids = batch["input_ids"].to(device)
     attention_mask = batch["attention_mask"].to(device)
     
-    # 翻译模式：使用batch中提供的labels（已经mask掉prompt部分）
-    # 对话模式：如果batch没有labels，则自动生成（向右移位）
-    if "labels" in batch:
-        labels = batch["labels"].to(device)
-    else:
-        # 对话模式（向右移位生成labels）
-        labels = input_ids.clone()
-        labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
+    # 因果LM：输入是完整序列，labels是向右移位的序列
+    labels = input_ids.clone()
+    labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
     
     with autocast_ctx:
         outputs = transformer(
@@ -2409,62 +2331,64 @@ if __name__ == "__main__":
 
     # 0. 常量定义
 
-    # ======== 数据文件地址（翻译数据集：葡萄牙语-英语） ========
-    # 修改为你的实际数据集路径（数据集需要迁移到当前服务器）
-    train_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_train.csv"
-    val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
-    special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
+    # 数据文件地址（心理咨询对话数据集）
+    train_path = "/workspace/datasets/YIRONGCHEN/PsyDTCorpus/PsyDTCorpus_train_mulit_turn_packing.json"
+    val_path = "/workspace/datasets/YIRONGCHEN/PsyDTCorpus/PsyDTCorpus_test_single_turn_split.json"
+    special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>", "<|im_start|>", "<|im_end|>"]
     
     # 根据模型类型设置不同的checkpoint目录
     if use_kimi:
-        checkpoint_dir = 'checkpoints_kimi_translation'  # 翻译任务专用目录
+        checkpoint_dir = 'checkpoints_kimi'
     elif use_mla:
         checkpoint_dir = 'checkpoints'
     else:
         checkpoint_dir = 'checkpoints_no_mla'
     logger.info(f"   - Checkpoint目录: {checkpoint_dir}")
 
-    # ======== 构建词表参数（与train_moe_mla_parallel.py保持一致）========
+    # 构建词表参数
     vocab_size = 2 ** 13  # 词表大小 (8192)
     min_freq = 2  # 最小词频
     special_tokens = special_tokens  # 特殊符号
-    max_length = 64  # 翻译任务最大序列长度（与train_moe_mla_parallel.py一致）
+    max_length = 4096  # 最大序列长度（心理咨询对话平均~2442 tokens，最大~3901，用4096保留100%数据）
 
-    # ======== 模型训练超参数（与train_moe_mla_parallel.py保持一致）========
-    batch_size = 64  # 与参考脚本保持一致
-    warmup_steps = 4000  # 与参考脚本保持一致
-    epochs = 15  # 与参考脚本保持一致
-    learning_rate = 1e-4  # 与参考脚本保持一致
+    # 模型训练超参数（最后尝试：让模型充分拟合）
+    batch_size = 128  # 减小batch (256→128)，增大模型后显存可能不够
+    warmup_steps = 200  # 增加warmup (100→200)
+    epochs = 50  # 增加epoch (30→50)，给模型更多时间学习
+    # learning_rate = 1.0           # 学习率
+    # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
+    # eps = 1e-9                    # 防止除零错误的小常数
+    learning_rate = 5e-4  # 降低学习率 (1.5e-3→5e-4)，更稳定地训练
     betas = (0.9, 0.999)
     eps = 1e-8
-    weight_decay = 0.01
-    label_smoothing = 0.0  # 翻译任务通常不用label_smoothing
+    weight_decay = 0.01  # 减小weight_decay (0.1→0.01)，允许模型更好地拟合
+    label_smoothing = 0.05  # 减小label_smoothing (0.1→0.05)
 
-    # ======== 模型结构（与train_moe_mla_parallel.py保持一致）========
-    num_layers = 8  # 与参考脚本保持一致
-    d_model = 512  # 与参考脚本保持一致
-    dff = 2048  # 与参考脚本保持一致
-    num_heads = 8  # 与参考脚本保持一致
-    dropout_rate = 0.1  # 与参考脚本保持一致
+    # 模型结构（最后一次尝试：稍微增大模型）
+    num_layers = 6  # 增加层数 (4→6)
+    d_model = 512  # 增加维度 (256→512)
+    dff = 2048  # 增加FFN维度 (1024→2048)
+    num_heads = 8  # 增加注意力头 (4→8)
+    dropout_rate = 0.15  # 稍微减小dropout (0.2→0.15)，让模型更容易拟合
     
     # # KV Cache 计算相关参数
     # head_dim = d_model // num_heads  # 每个Head的向量维度 = 512/8 = 64 (对应Qwen-72B的128)
     
 
-    # ======== MoE 配置（与train_moe_mla_parallel.py保持一致）========
+    # MoE 配置 - 增大模型容量
     use_moe = True  # 是否使用 MoE
     moe_config = MoEConfig(
-        num_experts=8,  # 与参考脚本保持一致
+        num_experts=8,  # 恢复专家数量 (4→8)
         num_experts_per_tok=2,
         hidden_size=d_model,
         intermediate_size=dff,
         hidden_act="silu",
-        router_aux_loss_coef=0.005,
+        router_aux_loss_coef=0.005,  # 降低辅助损失权重以减少梯度波动
         use_moe=use_moe,
-        n_routed_experts=8,
-        routed_scaling_factor=0.8,
+        n_routed_experts=8,  # 与 num_experts 保持一致
+        routed_scaling_factor=0.8,  # 降低缩放因子以稳定训练
         scoring_func="sigmoid",
-        topk_method="noaux_tc",
+        topk_method="noaux_tc",  # 现在支持训练模式
         n_group=1,
         topk_group=1,
         norm_topk_prob=True,
@@ -2479,54 +2403,43 @@ if __name__ == "__main__":
     # 设置随机数种子以确保实验可重复性
     set_random_seed(random_seed)
 
-    # 2. 加载或训练 tokenizers（翻译任务需要两个tokenizer：葡语和英语）
-    pt_tokenizer_dir = "tok_pt"
-    en_tokenizer_dir = "tok_en"
-    
-    if os.path.exists(f"{pt_tokenizer_dir}/tokenizer.json") and os.path.exists(f"{en_tokenizer_dir}/tokenizer.json"):
-        # tokenizers已存在，直接加载
-        logger.info("发现已保存的tokenizers，直接加载...")
-        pt_tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{pt_tokenizer_dir}/tokenizer.json")
-        en_tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{en_tokenizer_dir}/tokenizer.json")
+    # 2. 加载或训练tokenizer
+    tokenizer_dir = "tok_zh"
+    if os.path.exists(f"{tokenizer_dir}/tokenizer.json"):
+        # tokenizer已存在，直接加载
+        logger.info("发现已保存的tokenizer，直接加载...")
+        tokenizer = PreTrainedTokenizerFast(tokenizer_file=f"{tokenizer_dir}/tokenizer.json")
         
         # 设置特殊符号
-        for tok in (pt_tokenizer, en_tokenizer):
-            tok.pad_token = "<pad>"
-            tok.unk_token = "<unk>"
-            tok.bos_token = "<s>"
-            tok.eos_token = "</s>"
-            tok.mask_token = "<mask>"
-            tok.model_max_length = max_length
-            tok.padding_side = "right"
+        tokenizer.pad_token = "<pad>"
+        tokenizer.unk_token = "<unk>"
+        tokenizer.bos_token = "<s>"
+        tokenizer.eos_token = "</s>"
+        tokenizer.mask_token = "<mask>"
+        tokenizer.model_max_length = max_length
+        tokenizer.padding_side = "right"
         
-        logger.info(f"✅ Tokenizers加载完成: pt词表 {len(pt_tokenizer)}, en词表 {len(en_tokenizer)}")
+        logger.info(f"✅ Tokenizer加载完成: 词表大小 {len(tokenizer)}")
     else:
-        # tokenizers不存在，需要训练
-        logger.info("未发现tokenizers，开始加载数据集并训练tokenizers...")
-        train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+        # tokenizer不存在，需要训练
+        logger.info("未发现tokenizer，开始加载数据集并训练tokenizer...")
+        train_dataset, val_dataset = load_dialogue_dataset(train_path=train_path, val_path=val_path)
         
-        pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
+        tokenizer = train_and_load_tokenizer(
             train_dataset=train_dataset,
-            pt_key="pt",
-            en_key="en",
             vocab_size=vocab_size,
             min_freq=min_freq,
             special_tokens=special_tokens,
-            save_dir_pt=pt_tokenizer_dir,
-            save_dir_en=en_tokenizer_dir,
+            save_dir=tokenizer_dir,
             max_length=max_length
         )
-        logger.info("✅ Tokenizers训练完成")
+        logger.info("✅ Tokenizer训练完成")
         
         # 训练完后释放数据集内存
         del train_dataset, val_dataset
         gc.collect()
     
-    # 测试tokenizers
-    test_tokenizers(en_tokenizer=en_tokenizer, pt_tokenizer=pt_tokenizer)
-    
-    # 翻译任务使用英语tokenizer作为主tokenizer（因为模型生成英语）
-    tokenizer = en_tokenizer
+    test_tokenizer(tokenizer=tokenizer)
 
     # MLA 配置
     q_lora_rank = d_model // 2  # Q 的低秩维度，默认为 d_model 的一半
@@ -2667,28 +2580,95 @@ if __name__ == "__main__":
         return [bos_id] + ids + [eos_id]
     
     if use_kimi:
-        # ======== Kimi因果语言模型模式：使用翻译数据 ========
-        logger.info("开始加载翻译数据集...")
-        train_dataset, val_dataset = load_translation_dataset(train_path=train_path, val_path=val_path)
+        # Kimi因果语言模型模式：使用对话数据
+        def messages_to_text(messages):
+            """将messages转换为训练文本"""
+            text_parts = []
+            for msg in messages:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if role == "system":
+                    text_parts.append(f"<|im_start|>system\n{content}<|im_end|>")
+                elif role == "user":
+                    text_parts.append(f"<|im_start|>user\n{content}<|im_end|>")
+                elif role == "assistant":
+                    text_parts.append(f"<|im_start|>assistant\n{content}<|im_end|>")
+            return "\n".join(text_parts)
         
-        # 使用新的翻译DataLoader构建函数
-        logger.info("开始构建翻译DataLoader...")
-        train_loader2, val_loader2, tokenizer = build_translation_dataloaders(
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
-            pt_tokenizer=pt_tokenizer,
-            en_tokenizer=en_tokenizer,
-            batch_size=batch_size,
-            max_length=max_length,
-            num_workers=0,
-            shuffle_train=True,
-        )
+        def build_filtered_sequences(hf_split, tokenizer, max_len: int):
+            sequences = []
+            for ex in hf_split:
+                messages = ex.get("messages", [])
+                if not messages:
+                    continue
+                text = messages_to_text(messages)
+                ids = encode_with_bos_eos(tokenizer, text)
+                if len(ids) <= max_len:
+                    sequences.append(ids)
+            return sequences
         
-        logger.info(f"✅ 翻译DataLoader构建完成")
+        # 检查缓存是否存在
+        if os.path.exists(train_cache_file) and os.path.exists(val_cache_file):
+            logger.info(f"发现缓存文件，直接加载: {train_cache_file}, {val_cache_file}")
+            with open(train_cache_file, 'rb') as f:
+                train_sequences = pickle.load(f)
+            with open(val_cache_file, 'rb') as f:
+                val_sequences = pickle.load(f)
+            logger.info(f"✅ 从缓存加载数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+        else:
+            # 需要重新构建，先加载原始数据集
+            logger.info(f"开始加载原始数据集...")
+            train_dataset, val_dataset = load_dialogue_dataset(train_path=train_path, val_path=val_path)
+            
+            logger.info(f"开始构建过滤后的训练数据序列...")
+            train_sequences = build_filtered_sequences(train_dataset, tokenizer, max_length)
+            val_sequences = build_filtered_sequences(val_dataset, tokenizer, max_length)
+            logger.info(f"✅ 过滤后数据集: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+            
+            # 保存到磁盘
+            logger.info(f"保存数据到缓存: {train_cache_file}, {val_cache_file}")
+            with open(train_cache_file, 'wb') as f:
+                pickle.dump(train_sequences, f)
+            with open(val_cache_file, 'wb') as f:
+                pickle.dump(val_sequences, f)
+            
+            # 释放原始数据集内存
+            del train_dataset, val_dataset
+            gc.collect()
         
-        # 释放原始数据集内存
-        del train_dataset, val_dataset
-        gc.collect()
+        # Dataset 类（单一序列）
+        class SequenceDataset(Dataset):
+            def __init__(self, sequences): 
+                self.sequences = sequences
+
+            def __len__(self): 
+                return len(self.sequences)
+
+            def __getitem__(self, idx):
+                return {"input_ids": self.sequences[idx]}
+        
+        filtered_train_dataset = SequenceDataset(train_sequences)
+        filtered_val_dataset = SequenceDataset(val_sequences)
+        
+        # Collate 函数（单一序列）
+        def collate_padded(batch):
+            def pad_block(seqs, pad_value):
+                max_len = max(len(s) for s in seqs)
+                out = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
+                attn = torch.zeros((len(seqs), max_len), dtype=torch.long)
+                for i, s in enumerate(seqs):
+                    L = len(s)
+                    out[i, :L] = torch.tensor(s, dtype=torch.long)
+                    attn[i, :L] = 1
+                return out, attn
+
+            ids_list = [ex["input_ids"] for ex in batch]
+            input_ids, attention_mask = pad_block(ids_list, tokenizer.pad_token_id)
+
+            return {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+            }
     else:
         # Seq2Seq模式：使用对话数据（与Kimi模式类似）
         def messages_to_text(messages):
