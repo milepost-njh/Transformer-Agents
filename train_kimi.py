@@ -2859,13 +2859,18 @@ if __name__ == "__main__":
         **adamw_kwargs
     )
 
-    warmup_steps = int(0.15 * num_training_steps)  # 15% 步数用作 warmup（MoE需要更长warmup）
-    # 获取学习率调度器 - 使用更激进的衰减
+    # 使用与参考脚本一致的固定warmup steps（不要动态计算！）
+    # warmup_steps已在超参数部分设置为4000
+    logger.info(f"📊 训练步数统计:")
+    logger.info(f"   - 总训练步数: {num_training_steps}")
+    logger.info(f"   - Warmup步数: {warmup_steps} ({warmup_steps/num_training_steps*100:.1f}%)")
+    
+    # 获取学习率调度器
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
-        num_warmup_steps=warmup_steps,
+        num_warmup_steps=warmup_steps,  # 使用固定的4000步
         num_training_steps=num_training_steps,
-        num_cycles=0.5,  # 保持0.5个周期，让学习率充分衰减
+        num_cycles=0.5,
     )
 
     # 7. 自定义损失函数
