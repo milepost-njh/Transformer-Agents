@@ -280,46 +280,30 @@ def load_translation_dataset(train_path: str, val_path: str, delimiter: str = "\
     """
     logger.info("开始加载翻译数据集...")
     
-    # 先加载查看第一行是否是列名
-    with open(train_path, 'r', encoding='utf-8') as f:
-        first_line = f.readline().strip()
-        logger.info(f"数据集第一行: {first_line[:100]}...")  # 只显示前100个字符
-    
-    # 如果第一行是 "pt\ten" 或 "por\ten"，说明有表头
-    has_header = first_line.lower().startswith(('pt\t', 'por\t'))
-    
-    if has_header:
-        logger.info("检测到 CSV 表头，使用 header='infer'")
-        dataset = load_dataset(
-            "csv",
-            data_files={
-                "train": train_path,
-                "validation": val_path
-            },
-            delimiter=delimiter
-        )
-    else:
-        logger.info("未检测到表头，使用自定义列名 ['pt', 'en']")
-        dataset = load_dataset(
-            "csv",
-            data_files={
-                "train": train_path,
-                "validation": val_path
-            },
-            column_names=["pt", "en"],
-            delimiter=delimiter
-        )
+    # 像参考脚本一样，强制将列重命名为统一的 ["pt", "en"]
+    # 这样不管CSV原始列名是什么（por/pt），代码中都统一使用 pt
+    dataset = load_dataset(
+        "csv",
+        data_files={
+            "train": train_path,
+            "validation": val_path
+        },
+        column_names=["pt", "en"],  # 强制重命名，与参考脚本保持一致
+        delimiter=delimiter
+    )
 
     logger.info(f"✅ 翻译数据集加载完成: 训练集 {len(dataset['train'])} 条, 验证集 {len(dataset['validation'])} 条")
-    logger.info(f"数据集列名: {dataset['train'].column_names}")
-    logger.info(f"示例数据 -> pt: {dataset['train'][0]['pt'][:50]}... | en: {dataset['train'][0]['en'][:50]}...")
+    
+    # 打印一个样本
+    sample = dataset["train"][0]
+    logger.info(f"示例数据 -> pt: {sample['pt'][:50]}... | en: {sample['en'][:50]}...")
 
     return dataset["train"], dataset["validation"]
 
 
 def train_and_load_tokenizers(
         train_dataset,
-        pt_key="pt",
+        pt_key="pt",  # 改回 'pt'（因为已强制重命名）
         en_key="en",
         vocab_size=2 ** 13,
         min_freq=2,
@@ -488,7 +472,7 @@ def build_translation_dataloaders(
         kept, skipped = 0, 0
         
         for ex in hf_split:
-            pt_text = ex["pt"]
+            pt_text = ex["pt"]  # 统一使用 "pt"（已在加载时强制重命名）
             en_text = ex["en"]
             
             # 构建prompt格式
@@ -2529,7 +2513,7 @@ if __name__ == "__main__":
         
         pt_tokenizer, en_tokenizer = train_and_load_tokenizers(
             train_dataset=train_dataset,
-            pt_key="pt",
+            pt_key="pt",  # 使用统一的列名
             en_key="en",
             vocab_size=vocab_size,
             min_freq=min_freq,
@@ -2549,6 +2533,15 @@ if __name__ == "__main__":
     
     # 翻译任务使用英语tokenizer作为主tokenizer（因为模型生成英语）
     tokenizer = en_tokenizer
+    
+    # 打印tokenizer信息
+    logger.info(f"📊 Tokenizer信息:")
+    logger.info(f"   - 葡语词表: {len(pt_tokenizer)}")
+    logger.info(f"   - 英语词表: {len(en_tokenizer)}")
+    logger.info(f"   - 主tokenizer: 英语 (用于模型)")
+    logger.info(f"   - pad_token_id: {tokenizer.pad_token_id}")
+    logger.info(f"   - bos_token_id: {tokenizer.bos_token_id}")
+    logger.info(f"   - eos_token_id: {tokenizer.eos_token_id}")
 
     # MLA 配置
     q_lora_rank = d_model // 2  # Q 的低秩维度，默认为 d_model 的一半
@@ -2556,6 +2549,14 @@ if __name__ == "__main__":
 
     # 3. 构建模型
     vocab_size_model = tokenizer.vocab_size
+    
+    logger.info(f"\n🏗️  开始构建模型...")
+    logger.info(f"   - 模型类型: {'Kimi因果LM' if use_kimi else 'Seq2Seq Transformer'}")
+    logger.info(f"   - 词表大小: {vocab_size_model}")
+    logger.info(f"   - 隐藏层数: {num_layers}")
+    logger.info(f"   - 隐藏维度: {d_model}")
+    logger.info(f"   - 注意力头数: {num_heads}")
+    logger.info(f"   - FFN维度: {dff}")
 
     if use_kimi:
         # 使用 Kimi 因果语言模型
@@ -2579,6 +2580,7 @@ if __name__ == "__main__":
             eos_token_id=tokenizer.eos_token_id,
             rope_theta=10000.0,
             tie_word_embeddings=False,
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32,  # 修复Flash Attention警告
             # MoE 配置
             num_experts=moe_config.num_experts if use_moe else None,
             num_experts_per_token=moe_config.num_experts_per_tok if use_moe else None,
