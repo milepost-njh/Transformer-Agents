@@ -5,7 +5,7 @@ import sys
 
 # ===== 必须在导入其他库之前设置环境变量 =====
 # 设置可见的GPU
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,5,6,7"  # 使用5张GPU
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,5,6,7"  # 使用5张GPU
 
 # 禁用TensorFlow（我们只用PyTorch，不需要TensorFlow）
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # 禁用TensorFlow日志
