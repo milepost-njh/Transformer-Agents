@@ -28,6 +28,7 @@ import transformers
 from einops import rearrange
 from packaging import version
 from torch import nn
+from loguru import logger
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache
 from transformers.generation import GenerationMixin
@@ -1095,6 +1096,7 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
         generation_mode: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        debug_mode: bool = False,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
@@ -1106,9 +1108,46 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
 
         Returns:
 
-        Example:
+        Example of log:
 
        """
+        # ============================================================================
+        # 输入数据说明（forward 函数接收到的数据）
+        # ============================================================================
+        # 注意：数据已经在 DataLoader 的 collate_fn 中完成了 padding 处理
+        # 
+        # 输入张量形状：
+        #   - input_ids: (batch_size, seq_len)
+        #     * batch_size: 当前 batch 的样本数量（如果使用 DataParallel，可能是分片后的数量）
+        #     * seq_len: 经过 padding 后的序列长度（每个 batch 可能不同，动态 padding）
+        #     * 例如：(128, 74) 或 (24, 74)（DataParallel 分片后）
+        #     * padding 位置的值 = pad_token_id（通常是 1）
+        #
+        #   - attention_mask: (batch_size, seq_len)
+        #     * 形状与 input_ids 相同
+        #     * 1 表示真实 token，0 表示 padding 位置
+        #     * 模型使用此 mask 来忽略 padding 位置的 attention 计算
+        #
+        #   - labels: (batch_size, seq_len) 或 None
+        #     * 形状与 input_ids 相同
+        #     * 包含真实 token id 或 -100（用于 mask）
+        #     * -100 的位置会被损失函数忽略（PyTorch CrossEntropyLoss 的 ignore_index）
+        #     * 在翻译任务中：
+        #       - prompt 部分：-100（不计算损失）
+        #       - 英文部分：真实 token id（计算损失）
+        #       - padding 部分：-100（不计算损失）
+        #
+        # 输出 logits 形状：
+        #   - logits: (batch_size, seq_len, vocab_size)
+        #     * 每个位置 i 的 logits 预测下一个 token（即位置 i+1 的 token）
+        #     * 因果语言模型的预测逻辑：logits[i] 对应预测 labels[i]
+        #     * 例如：logits[0] 预测 input_ids[1]，logits[1] 预测 input_ids[2]
+        #
+        # 损失计算：
+        #   - 使用 logits 和 labels 计算交叉熵损失
+        #   - labels 中 -100 的位置会被自动忽略
+        #   - 只对非 -100 的位置（即需要学习的部分）计算损失
+        # ============================================================================
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -1117,8 +1156,8 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
+            input_ids=input_ids, # shape: (batch_size, max_len)
+            attention_mask=attention_mask, # shape: (batch_size, max_len)
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
@@ -1133,6 +1172,22 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
         if generation_mode:
             logits = logits[:, -1:]
         logits = self.lm_head(logits)
+
+        # Debug mode: 打印 logits 形状并中断
+        if debug_mode:
+            logger.warning("=" * 80)
+            logger.warning("🔍 Debug Mode - Forward Function:")
+            logger.warning(f"  logits shape: {logits.shape}")
+            if input_ids is not None:
+                logger.warning(f"  input_ids shape: {input_ids.shape}")
+                logger.warning(f"  ⚠️ 注意：如果使用了 DataParallel，这里的 batch_size 是分片后的")
+                logger.warning(f"     原始 batch_size 可能更大（例如原始128，分片后可能为24/26等）")
+            if labels is not None:
+                logger.warning(f"  labels shape: {labels.shape}")
+            if attention_mask is not None:
+                logger.warning(f"  attention_mask shape: {attention_mask.shape}")
+            logger.warning("=" * 80)
+            assert 1 == 0, "Debug mode: 在 forward 函数中断点"
 
         loss = None
         if labels is not None:

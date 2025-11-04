@@ -426,6 +426,7 @@ def build_translation_dataloaders(
         max_length: int = 64,
         num_workers: int = 0,
         shuffle_train: bool = True,
+        debug_mode: bool = False,
 ):
     """
     构建翻译训练的 DataLoader（Decoder-Only 模式，使用统一 tokenizer）
@@ -442,7 +443,7 @@ def build_translation_dataloaders(
         max_length: 样本最大长度（超过则过滤）
         num_workers: DataLoader worker 数量
         shuffle_train: 是否打乱训练集
-
+        debug_mode: 是否开启调试模式
     返回:
         train_loader, val_loader
     """
@@ -471,28 +472,50 @@ def build_translation_dataloaders(
         sequences = []
         kept, skipped = 0, 0
         
-        for ex in hf_split:
+        for idx, ex in enumerate(hf_split):
             pt_text = ex["pt"]  # 统一使用 "pt"（已在加载时强制重命名）
             en_text = ex["en"]
             
             # 构建prompt格式
+            # 示例: "Translate Portuguese to English:\n{Eu dei um livro ao menino.}\nEnglish: "
             prompt = f"Translate Portuguese to English:\n{pt_text}\nEnglish: "
             
-            # 分别编码各部分（不添加特殊token）
+            # 分别编码各部分（不添加特殊token，稍后手动添加BOS/EOS）
             prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
             en_ids = tokenizer.encode(en_text, add_special_tokens=False)
             
             # 组合完整序列：[BOS] + prompt_ids + en_ids + [EOS]
+            # 结构示例:
+            #   [BOS] + ["Translate", "Portuguese", "to", "English", ":", "\n", "Eu", "dei", ...] + ["I", "gave", ...] + [EOS]
+            #   input_ids = [0, 56, 86, 1102, ..., 45, 1004, 285, 950, 264, 593, 18, 2]
             bos_id = tokenizer.bos_token_id
             eos_id = tokenizer.eos_token_id
             input_ids = [bos_id] + prompt_ids + en_ids + [eos_id]
             
             # 检查长度
             if len(input_ids) <= max_len:
-                # 构建labels：只对英文部分计算损失
-                # prompt部分（包括BOS）mask为-100，英文部分保留真实token
-                prompt_len = len([bos_id] + prompt_ids)
-                labels = [-100] * prompt_len + en_ids + [eos_id]
+                # ============================================================================
+                # 构建 labels mask：只对英文部分计算损失，prompt部分mask掉
+                # ============================================================================
+                # labels 的结构说明：
+                #   - prompt部分（包括BOS和整个prompt）: 全部设为 -100（不计算损失）
+                #   - 英文部分（en_ids + EOS）: 保留真实token id（计算损失）
+                # 
+                # 示例对比（基于日志数据）:
+                #   input_ids = [0, 56, 86, 1102, ..., 45, 1004, 285, 950, 264, 593, 18, 2]
+                #                ↑───────────────────────────────────────────────↑  ↑──────────↑
+                #                prompt部分（mask）                               英文部分（计算损失）
+                #   labels     = [-100, -100, -100, ..., -100, 45, 1004, 285, 950, 264, 593, 18, 2]
+                #                ↑───────────────────────────────────────────────↑  ↑──────────↑
+                #                -100 (不计算损失)                                真实token（计算损失）
+                # 
+                # 为什么这样做？
+                #   1. 模型需要看到完整的上下文（prompt + 葡语 + 英文）来理解翻译任务
+                #   2. 但训练时只需要学习生成英文部分，不需要学习prompt的生成
+                #   3. 使用 -100 mask 可以让损失函数忽略这些位置，只计算英文部分的损失
+                # ============================================================================
+                prompt_len = len([bos_id] + prompt_ids)  # BOS + prompt 的总长度
+                labels = [-100] * prompt_len + en_ids + [eos_id]  # prompt部分mask，英文部分保留
                 
                 assert len(input_ids) == len(labels), f"长度不匹配: {len(input_ids)} vs {len(labels)}"
                 
@@ -501,6 +524,16 @@ def build_translation_dataloaders(
                     "labels": labels
                 })
                 kept += 1
+                if debug_mode:
+                    if idx == 1:
+                        logger.info("=" * 80)
+                        logger.info(f"  原始 ex 字典的 keys: {ex.keys()}")
+                        logger.info(f"  pt_text: {pt_text}")
+                        logger.info(f"  en_text: {en_text}")
+                        logger.info("🔍 构建的序列示例样本:")
+                        logger.info(f"  input_ids: {input_ids}")
+                        logger.info(f"  labels: {labels}")
+                        logger.info("=" * 80)
             else:
                 skipped += 1
         
@@ -511,6 +544,24 @@ def build_translation_dataloaders(
     val_sequences = build_filtered_translation_sequences(val_dataset, tokenizer, max_length)
     
     logger.info(f"✅ 翻译数据集构建完成: 训练集 {len(train_sequences)} 条, 验证集 {len(val_sequences)} 条")
+    
+    if debug_mode:
+        # 打印一个训练序列的示例
+        if len(train_sequences) > 0:
+            sample = train_sequences[0]
+            logger.info("=" * 80)
+            logger.info("🔍 训练序列示例样本:")
+            logger.info(f"  input_ids 长度: {len(sample['input_ids'])}")
+            logger.info(f"  labels 长度: {len(sample['labels'])}")
+            logger.info(f"  input_ids: {sample['input_ids']}")
+            logger.info(f"  labels: {sample['labels']}")
+            # 尝试解码查看文本内容
+            try:
+                decoded_input = tokenizer.decode(sample['input_ids'], skip_special_tokens=False)
+                logger.info(f"  解码后的文本: {decoded_input}")
+            except Exception as e:
+                logger.warning(f"  解码失败: {e}")
+            logger.info("=" * 80)
 
     # Dataset 类
     class TranslationDataset(Dataset):
@@ -528,22 +579,77 @@ def build_translation_dataloaders(
         """
         batch: list of {"input_ids": [...], "labels": [...]}
         返回: {"input_ids": tensor, "attention_mask": tensor, "labels": tensor}
+        
+        功能：将不同长度的序列 pad 到相同长度，以便批量处理
         """
         def pad_sequence(seqs, pad_value):
-            max_len = max(len(s) for s in seqs)
-            padded = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)
+            """
+            将不同长度的序列 pad 到批次中的最大长度
+            
+            参数:
+                seqs: list of sequences，每个sequence是不同长度的list
+                pad_value: padding时使用的值
+            
+            返回:
+                padded: shape (batch_size, max_len) 的tensor，较短序列用pad_value填充
+            """
+            max_len = max(len(s) for s in seqs)  # 找到批次中最长序列的长度
+            padded = torch.full((len(seqs), max_len), pad_value, dtype=torch.long)  # 创建全pad_value的tensor
             for i, s in enumerate(seqs):
-                padded[i, :len(s)] = torch.tensor(s, dtype=torch.long)
+                padded[i, :len(s)] = torch.tensor(s, dtype=torch.long)  # 将实际序列填充到前面，后面保持pad_value
             return padded
         
         input_ids_list = [ex["input_ids"] for ex in batch]
         labels_list = [ex["labels"] for ex in batch]
         
-        # Pad sequences
-        input_ids = pad_sequence(input_ids_list, pad_id)
-        labels = pad_sequence(labels_list, -100)  # labels 用 -100 padding
+        # ============================================================================
+        # Padding 说明
+        # ============================================================================
+        # 重要：这是动态padding，每个batch的max_len可能不同！
+        # max_len = max(len(s) for s in seqs) 会找到当前batch中所有序列的最大长度
+        # 例如：如果这个batch中最长序列是74，那么所有序列都padding到74
+        #
+        # 1. input_ids padding: 使用 tokenizer 的 pad_token_id
+        #    - 原因：模型需要知道哪些位置是padding，哪些是真实token
+        #    - 示例：如果 pad_id=1，则 padding 位置为 1
+        #            input_ids = [[0, 56, 86, ..., 2, 1, 1, 1],  # 第一个样本，实际长度54，pad到74
+        #                         [0, 56, 86, ..., 2, 1, 1, 1],  # 第二个样本，实际长度60，pad到74
+        #                         ...]                            # 最长样本长度74，所以所有都pad到74
+        #    - 形状：从不同长度的列表 -> (batch_size, max_len) 的tensor
+        #           例如：batch_size=128, max_len=74 -> (128, 74)
+        #           注意：下一个batch如果最长是80，那么shape就是 (128, 80)
+        #
+        # 2. labels padding: 使用 -100（不是 pad_token_id！）
+        #    - 原因：-100 是 PyTorch CrossEntropyLoss 的 ignore_index
+        #           当 labels 中某个位置是 -100 时，损失函数会忽略该位置的损失
+        #    - 作用：padding 位置不应该计算损失，所以用 -100 标记
+        #    - 示例：labels = [[-100, -100, ..., 45, 1004, ..., -100, -100, -100],
+        #                       [-100, -100, ..., 6866, 299, ..., -100, -100, -100],
+        #                       ...]
+        #           其中：
+        #             - prompt部分：-100（不计算损失，因为这是输入）
+        #             - 英文部分：真实token id（计算损失，这是要学习的）
+        #             - padding部分：-100（不计算损失，因为这是填充）
+        #
+        # 3. attention_mask: 标记哪些位置是真实token（1），哪些是padding（0）
+        #    - 创建方式：input_ids != pad_id，即非padding位置为1，padding位置为0
+        #    - 示例：attention_mask = [[1, 1, 1, ..., 1, 0, 0, 0],  # 前54个是真实token，后20个是padding（pad到74）
+        #                               [1, 1, 1, ..., 1, 0, 0, 0],  # 前60个是真实token，后14个是padding（pad到74）
+        #                               ...]                         # 每个样本的真实长度不同，但都pad到max_len=74
+        #    - 形状：与 input_ids 相同，例如 (128, 74)
+        #    - 作用：模型在计算attention时会mask掉padding位置，避免padding影响计算
+        #
+        # 为什么 input_ids 和 labels 使用不同的 padding 值？
+        #   - input_ids: 用 pad_token_id，让模型知道这是padding
+        #   - labels: 用 -100，让损失函数忽略这些位置
+        #   两者配合使用：attention_mask 确保模型不会关注padding位置，-100 确保损失不会计算padding位置
+        # ============================================================================
+        input_ids = pad_sequence(input_ids_list, pad_id)  # 用 pad_token_id padding
+        labels = pad_sequence(labels_list, -100)  # 用 -100 padding（损失函数会忽略）
         
-        # 创建 attention mask
+        # 创建 attention mask：1表示真实token，0表示padding
+        # shape: (batch_size, max_len)，与 input_ids 相同
+        # 例如：如果这个batch的max_len=74，则shape为 (128, 74)
         attention_mask = (input_ids != pad_id).long()
 
         return {
@@ -569,6 +675,32 @@ def build_translation_dataloaders(
         num_workers=num_workers,
         pin_memory=True if torch.cuda.is_available() else False,
     )
+
+    if debug_mode:
+        # 打印一个 batch 的示例
+        logger.info("=" * 80)
+        logger.info("🔍 DataLoader Batch 示例样本:")
+        try:
+            sample_batch = next(iter(train_loader))
+            logger.info(f"  batch keys: {sample_batch.keys()}")
+            logger.info(f"  input_ids shape: {sample_batch['input_ids'].shape}")
+            logger.info(f"  attention_mask shape: {sample_batch['attention_mask'].shape}")
+            logger.info(f"  labels shape: {sample_batch['labels'].shape}")
+            logger.info(f"  input_ids[0] (第一个样本): {sample_batch['input_ids'][0].tolist()}")
+            logger.info(f"  labels[0] (第一个样本): {sample_batch['labels'][0].tolist()}")
+            logger.info(f"  attention_mask[0] (第一个样本): {sample_batch['attention_mask'][0].tolist()}")
+            # 尝试解码第一个样本
+            try:
+                decoded_batch_sample = tokenizer.decode(sample_batch['input_ids'][0], skip_special_tokens=False)
+                logger.info(f"  第一个样本解码文本: {decoded_batch_sample}")
+            except Exception as e:
+                logger.warning(f"  解码 batch 样本失败: {e}")
+        except Exception as e:
+            logger.warning(f"  获取 batch 示例失败: {e}")
+        logger.info("=" * 80)
+
+        # 调试断点：故意中断训练
+        assert 1 == 0, "调试断点：训练已中断"
 
     return train_loader, val_loader, tokenizer
 
@@ -1824,7 +1956,8 @@ class AverageMeter:
     def avg(self): return self.sum / max(1, self.n)
 
 
-def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, tokenizer=None, global_step=0):
+def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, 
+    use_multi_gpu=False, tokenizer=None, global_step=0, debug_mode=False):
     """
     训练单步（Kimi因果语言模型 - 支持翻译任务）
     
@@ -1837,9 +1970,13 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     # 使用 PyTorch SDPA + bf16 autocast
     use_autocast = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     if use_autocast:
+        if debug_mode:
+            logger.warning("Using autocast with bfloat16")
         autocast_ctx = torch.autocast(device_type="cuda", dtype=torch.bfloat16)
     else:
         from contextlib import nullcontext
+        if debug_mode:
+            logger.warning("Using nullcontext")
         autocast_ctx = nullcontext()
 
     # 从 batch 中提取数据
@@ -1855,6 +1992,15 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         labels = input_ids.clone()
         labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
     
+
+    if debug_mode:
+        logger.warning(f"input_ids shape: {input_ids.shape}")
+        logger.warning(f"labels shape: {labels.shape}")
+        logger.warning(f"attention_mask shape: {attention_mask.shape}")
+        logger.warning(f"input_ids: {input_ids}")
+        logger.warning(f"labels: {labels}")
+        logger.warning(f"attention_mask: {attention_mask}")
+        assert 1 == 0, "在train_step中断点"
     with autocast_ctx:
         outputs = transformer(
             input_ids=input_ids,
