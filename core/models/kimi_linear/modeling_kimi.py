@@ -522,11 +522,26 @@ class KimiDeltaAttention(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        cache_params: Optional[KimiDynamicCache] = None,
+        hidden_states: torch.Tensor,  # (batch_size, seq_len, hidden_size) 例如 (26, 74, 512)
+        attention_mask: Optional[torch.Tensor] = None,  # (batch_size, seq_len) 例如 (26, 74)
+        cache_params: Optional[KimiDynamicCache] = None,  # KV cache，用于增量生成
         **kwargs: Unpack[dict]
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Cache]]:
+        """
+        KimiDeltaAttention (KDA) - 线性复杂度的注意力机制
+        
+        核心思想：
+          - 传统注意力复杂度 O(n²)，n 是序列长度
+          - KDA 使用核分解将复杂度降低到 O(n)
+          - 适合处理长序列（Kimi 支持 100 万 token）
+        
+        主要步骤：
+          1. 投影 + 1D 卷积：提取 Q/K/V 的局部特征
+          2. 计算门控参数 g 和 beta：控制信息流动和遗忘
+          3. KDA 计算：使用核分解的线性注意力
+          4. 输出门控 + 归一化 + 投影
+        """
+        # 检查 attention_mask 必须是 2D (batch_size, seq_len)
         if attention_mask is not None:
             if attention_mask.dim() != 2:
                 attention_mask = kwargs.get("padding_mask", None)
@@ -537,18 +552,39 @@ class KimiDeltaAttention(nn.Module):
                     "(0 = padding). 3D masks are not supported here."
                 )
         use_cache = cache_params is not None
-        batch_size, q_len, _ = hidden_states.shape
-        mode = 'fused_recurrent' if q_len <= 64 else self.mode
+        batch_size, q_len, _ = hidden_states.shape  # batch_size=26, q_len=74, hidden_size=512
+        
+        # 根据序列长度选择计算模式：
+        #   - q_len <= 64: 使用 fused_recurrent（融合循环，适合短序列）
+        #   - q_len > 64: 使用 chunk（分块并行，适合长序列）
+        mode = 'fused_recurrent' if q_len <= 64 else self.mode  # 训练时 q_len=74，使用 chunk 模式
         if self.training:
             assert mode == 'chunk', "Only chunk mode is supported in training."
 
-        cu_seqlens = kwargs.get('cu_seqlens', None)
+        # ============================================================================
+        # Padding 优化：移除 padding token 以提高计算效率
+        # ============================================================================
+        # KDA 可以跳过 padding 位置，只计算有效 token，大幅提升效率
+        # 例如：(26, 74, 512) 中如果每个样本平均有 54 个有效 token，
+        #      可以优化为 (1, 54*26, 512) = (1, 1404, 512)
+        # ============================================================================
+        cu_seqlens = kwargs.get('cu_seqlens', None)  # 累积序列长度，用于 varlen（可变长度）处理
         indices = None
         if attention_mask is not None:
+            # 获取非 padding 位置的索引和累积长度
+            # 例如：26 个样本，每个有不同数量的有效 token（去掉 padding）
             indices, cu_seqlens, _ = get_unpad_data(attention_mask[:, -q_len:])
+            
+            # 重排并移除 padding：
+            # (batch_size, seq_len, hidden_size) -> 展平 -> 只取有效位置 -> (1, total_valid_tokens, hidden_size)
+            # 例如：(26, 74, 512) -> (26*74, 512) -> 取有效索引 -> (1, 约1404, 512)
+            #      （约1404 是 26 个样本的有效 token 总数，假设每个样本平均 54 个有效 token）
             hidden_states = index_first_axis(
                 rearrange(hidden_states, "b s ... -> (b s) ..."), indices).unsqueeze(0)
 
+        # 从 cache 中获取上一步的状态（用于增量生成，训练时为 None）
+        # conv_states: 1D 卷积的滑动窗口状态（保存最近 kernel_size 个 token）
+        # recurrent_states: KDA 的循环状态（保存累积的注意力信息）
         conv_state_q, conv_state_k, conv_state_v = None, None, None
         recurrent_state = None
         if cache_params is not None:
@@ -556,71 +592,111 @@ class KimiDeltaAttention(nn.Module):
                 conv_state_q, conv_state_k, conv_state_v = cache_params.conv_states[
                     self.layer_idx]
             recurrent_state = cache_params.recurrent_states[self.layer_idx]
+        
+        # Q 投影 + 1D 卷积：提取局部特征
+        # hidden_states -> q_proj -> conv1d -> q
         q, conv_state_q = self.q_conv1d(
-            x=self.q_proj(hidden_states),
+            x=self.q_proj(hidden_states),  # (1, valid_tokens, projection_k_size)
             cache=conv_state_q,
             output_final_state=use_cache,
             cu_seqlens=cu_seqlens
-        )
+        )  # -> q: (1, valid_tokens, projection_k_size)
+        
+        # K 投影 + 1D 卷积
         k, conv_state_k = self.k_conv1d(
-            x=self.k_proj(hidden_states),
+            x=self.k_proj(hidden_states),  # (1, valid_tokens, projection_k_size)
             cache=conv_state_k,
             output_final_state=use_cache,
             cu_seqlens=cu_seqlens
-        )
+        )  # -> k: (1, valid_tokens, projection_k_size)
+        
+        # V 投影 + 1D 卷积
         v, conv_state_v = self.v_conv1d(
-            x=self.v_proj(hidden_states),
+            x=self.v_proj(hidden_states),  # (1, valid_tokens, projection_size)
             cache=conv_state_v,
             output_final_state=use_cache,
             cu_seqlens=cu_seqlens
-        )
-        g = self.f_b_proj(self.f_a_proj(hidden_states))
-        g = fused_kda_gate(g, self.A_log, self.head_dim, g_bias=self.dt_bias)
-        beta = self.b_proj(hidden_states).float().sigmoid()
+        )  # -> v: (1, valid_tokens, projection_size)
+        
+        # 计算门控参数 g（用于控制信息流动）
+        g = self.f_b_proj(self.f_a_proj(hidden_states))  # (1, valid_tokens, projection_size)
+        g = fused_kda_gate(g, self.A_log, self.head_dim, g_bias=self.dt_bias)  # 应用门控机制
+        
+        # 计算 beta 参数（用于 KDA 的遗忘门）
+        beta = self.b_proj(hidden_states).float().sigmoid()  # (1, valid_tokens, num_heads)
 
+        # 重排为多头形式：(batch, tokens, num_heads * head_dim) -> (batch, tokens, num_heads, head_dim)
         q, k = map(lambda x: rearrange(
-            x, '... (h d) -> ... h d', d=self.head_k_dim), (q, k))
-        v = rearrange(v, '... (h d) -> ... h d', d=self.head_dim)
+            x, '... (h d) -> ... h d', d=self.head_k_dim), (q, k))  # -> (1, valid_tokens, num_heads, head_k_dim)
+        v = rearrange(v, '... (h d) -> ... h d', d=self.head_dim)  # -> (1, valid_tokens, num_heads, head_dim)
 
+        # KDA 核心计算：Kernel Decomposed Attention（线性复杂度的注意力机制）
         if mode == 'chunk':
+            # Chunk 模式：将序列分块处理（训练时使用，支持并行）
             o, recurrent_state = chunk_kda(
-                q=q,
-                k=k,
-                v=v,
-                g=g,
-                beta=beta,
+                q=q,  # (1, valid_tokens, num_heads, head_k_dim)
+                k=k,  # (1, valid_tokens, num_heads, head_k_dim)
+                v=v,  # (1, valid_tokens, num_heads, head_dim)
+                g=g,  # 门控参数
+                beta=beta,  # 遗忘门参数
                 initial_state=recurrent_state,
                 output_final_state=True,
                 use_qk_l2norm_in_kernel=True,
                 cu_seqlens=cu_seqlens,
-            )
+            )  # -> o: (1, valid_tokens, num_heads, head_dim)
         else:
+            # Fused Recurrent 模式：循环处理（推理时使用，q_len <= 64）
             o, recurrent_state = fused_recurrent_kda(
-                q=q,
-                k=k,
-                v=v,
-                g=g,
-                beta=beta,
+                q=q,  # (1, valid_tokens, num_heads, head_k_dim)
+                k=k,  # (1, valid_tokens, num_heads, head_k_dim)
+                v=v,  # (1, valid_tokens, num_heads, head_dim)
+                g=g,  # 门控参数
+                beta=beta,  # 遗忘门参数
                 initial_state=recurrent_state,
                 output_final_state=True,
                 use_qk_l2norm_in_kernel=True,
                 cu_seqlens=cu_seqlens,
-            )
+            )  # -> o: (1, valid_tokens, num_heads, head_dim)
+        # 保存当前状态到 cache（用于下一次增量生成）
         if cache_params is not None:
             cache_params.recurrent_states[self.layer_idx] = recurrent_state
             cache_params.conv_states[self.layer_idx] = (
                 conv_state_q, conv_state_k, conv_state_v)
 
-        g = self.g_b_proj(self.g_a_proj(hidden_states))
-        g = rearrange(g, '... (h d) -> ... h d', d=self.head_dim)
-        o = self.o_norm(o, g)
+        # ============================================================================
+        # 输出门控和归一化（Gated Output Normalization）
+        # ============================================================================
+        # 类似于 GLU（Gated Linear Unit），使用门控机制控制信息流动
+        # ============================================================================
+        # 计算输出门控 g：
+        # hidden_states -> g_a_proj (降维) -> g_b_proj (升维) -> 门控值
+        g = self.g_b_proj(self.g_a_proj(hidden_states))  # (1, valid_tokens, projection_size)
+        g = rearrange(g, '... (h d) -> ... h d', d=self.head_dim)  # -> (1, valid_tokens, num_heads, head_dim)
+        
+        # 应用门控归一化：RMSNorm + 门控
+        # o_norm 同时做两件事：1) RMSNorm 归一化  2) 与门控 g 相乘
+        o = self.o_norm(o, g)  # (1, valid_tokens, num_heads, head_dim)
 
-        o = rearrange(o, 'b t h d -> b t (h d)')
-        o = self.o_proj(o)
+        # 合并多头：将多个注意力头的输出拼接
+        # (batch, tokens, num_heads, head_dim) -> (batch, tokens, num_heads * head_dim)
+        o = rearrange(o, 'b t h d -> b t (h d)')  # -> (1, valid_tokens, projection_size)
+        
+        # 输出投影：将 projection_size 映射回 hidden_size
+        # 这一步统一不同配置下的输出维度
+        o = self.o_proj(o)  # (1, valid_tokens, projection_size) -> (1, valid_tokens, 512)
+        
+        # ============================================================================
+        # 还原 padding：将压缩的有效 token 还原为原始形状
+        # ============================================================================
+        # 之前为了效率移除了 padding，现在需要填充回去以匹配原始形状
+        # (1, valid_tokens, 512) -> (batch_size, seq_len, 512)
+        # 例如：(1, 约1404, 512) -> (26, 74, 512)
+        #      其中 padding 位置填充为 0
+        # ============================================================================
         if attention_mask is not None:
-            o = pad_input(o.squeeze(0), indices, batch_size, q_len)
+            o = pad_input(o.squeeze(0), indices, batch_size, q_len)  # -> (26, 74, 512)
 
-        return o
+        return o  # (26, 74, 512) - 与输入 hidden_states 形状相同
 
 
 class KimiMoEGate(nn.Module):
@@ -1007,7 +1083,7 @@ class KimiLinearModel(KimiPreTrainedModel):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        debug_mode: bool = True,
+        debug_mode: bool = False,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[Tuple, BaseModelOutputWithPast]:
 
