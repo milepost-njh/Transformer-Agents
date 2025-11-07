@@ -1007,62 +1007,174 @@ class KimiLinearModel(KimiPreTrainedModel):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         cache_position: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
+        debug_mode: bool = True,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[Tuple, BaseModelOutputWithPast]:
 
         use_cache = use_cache if use_cache is not None else self.config.use_cache
+
+        if debug_mode:
+            logger.warning("🔍 [KimiLinearModel] forward 开始")
+            if input_ids is not None:
+                logger.warning(f"  input_ids: {input_ids.shape}")
 
         if (input_ids is None) and (inputs_embeds is None):
             raise ValueError(
                 "You must specify exactly one of input_ids or inputs_embeds")
 
         # Get inputs_embeds
+        # input_ids: (batch_size, seq_len) -> inputs_embeds: (batch_size, seq_len, hidden_size)
+        # 例如：(26, 74) -> (26, 74, 512)
         if inputs_embeds is None:
-            inputs_embeds = self.embed_tokens(input_ids)
+            inputs_embeds = self.embed_tokens(input_ids)  # (batch_size, seq_len, hidden_size) 例如 (26, 74, 512)
+        
+        if debug_mode:
+            logger.warning(f"  inputs_embeds: {inputs_embeds.shape}")
 
         if use_cache and past_key_values is None:
             past_key_values = KimiDynamicCache(config=self.config)
 
+        # ============================================================================
+        # 计算 cache_position（当前输入在完整序列中的位置索引）
+        # ============================================================================
+        # 用于增量生成（KV-cache）：记录当前 token 在整个序列中的绝对位置
+        # 
+        # 工作流程：
+        #   1. 获取已缓存的序列长度（past_seen_tokens）
+        #      - 训练时：past_key_values=None，past_seen_tokens=0（从头开始）
+        #      - 推理时（使用 cache）：past_seen_tokens=之前生成的 token 数量
+        #   
+        #   2. 生成当前输入的位置索引
+        #      - cache_position = [past_seen_tokens, past_seen_tokens+1, ..., past_seen_tokens+seq_len-1]
+        #      - 例如：如果已生成 10 个 token，当前输入 5 个，则 cache_position = [10, 11, 12, 13, 14]
+        #      - 训练时（past_seen_tokens=0, seq_len=74）：cache_position = [0, 1, 2, ..., 73]（形状 (74,)）
+        #
+        # 为什么需要 cache_position？
+        #   - RoPE 位置编码需要知道每个 token 的绝对位置
+        #   - 创建 mask 时需要知道当前处理的是序列的哪一部分
+        # ============================================================================
         if cache_position is None:
+            # 获取已缓存的序列长度（训练时为 0，推理时为已生成的 token 数）
             past_seen_tokens = past_key_values.get_seq_length(
-            ) if past_key_values is not None else 0
-            cache_position: torch.Tensor = torch.arange(
+            ) if past_key_values is not None else 0  # -> int
+            
+            # 生成当前输入的绝对位置索引：[past_seen_tokens, past_seen_tokens+1, ..., past_seen_tokens+seq_len-1]
+            cache_position: torch.Tensor = torch.arange(  # (seq_len,)
                 past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
-            )
+            )  # -> (seq_len,)
 
         if position_ids is None:
-            position_ids = cache_position.unsqueeze(0)
+            # cache_position: (seq_len,) 例如 (74,) -> position_ids: (1, seq_len) 例如 (1, 74)
+            # 在实际计算时会广播到 (batch_size, seq_len) 例如 (26, 74)
+            position_ids = cache_position.unsqueeze(0)  # (seq_len,) -> (1, seq_len) 例如 (74,) -> (1, 74)
 
+        # ============================================================================
+        # 创建因果 mask（Causal Mask）- 用于自回归语言模型
+        # ============================================================================
+        # 作用：确保每个位置只能看到当前及之前的 token，不能看到未来的 token
+        #      这是自回归生成的核心机制（防止信息泄露）
+        #
+        # 输入参数：
+        #   - input_embeds: (batch_size, seq_len, hidden_size) 例如 (26, 74, 512)
+        #   - attention_mask: (batch_size, seq_len) 例如 (26, 74) - 标记哪些位置是 padding（1=有效，0=padding）
+        #   - position_ids: (batch_size, seq_len) 例如 (26, 74) - 每个 token 的位置索引 [0, 1, 2, ..., 73]
+        #   - cache_position: (seq_len,) 例如 (74,) - 当前序列在 cache 中的位置索引
+        #
+        # 输出：causal_mask (batch_size, 1, seq_len, seq_len) 或 None
+        #   - 4D tensor 例如 (26, 1, 74, 74)，其中第二维是 1（会广播到所有注意力头）
+        #   - mask[b, :, i, j] 表示样本 b 中位置 i 是否能看到位置 j
+        #   - 值为 0（可见）或 -inf（不可见，会被 softmax 过滤掉）
+        #
+        # Mask 创建过程（内部逻辑）：
+        #   1. 创建基础因果 mask：上三角矩阵，确保 i 只能看到 j <= i 的位置
+        #      对于 seq_len=74 的序列，生成 (74, 74) 的矩阵
+        #      简化示例（取前4个位置）：
+        #        [[0, 1, 1, 1],    位置0只能看到自己
+        #         [0, 0, 1, 1],    位置1能看到0和1
+        #         [0, 0, 0, 1],    位置2能看到0,1,2
+        #         [0, 0, 0, 0]]    位置3能看到0,1,2,3（所有历史）
+        #      实际是 (74, 74) 的矩阵，遵循相同规律
+        #
+        #   2. 结合 attention_mask（padding mask）：
+        #      假设 attention_mask = [1, 1, ..., 1, 0, 0, 0]（前 54 个有效，后 20 个是 padding）
+        #      则 padding 位置（54-73）在 mask 中被设为 -inf，表示任何位置都不能看到它们
+        #      同时 padding 位置自己也看不到任何东西（整行都是 -inf）
+        #
+        #   3. 转换为 4D：(batch_size, 1, seq_len, seq_len) 例如 (26, 1, 74, 74)
+        #      - batch_size=26：每个样本独立的 mask
+        #      - 第二维=1：会在注意力计算时广播到所有头（例如 8 个头）
+        #      - (74, 74)：每个位置对所有位置的可见性
+        #
+        # 特殊情况：
+        #   - 如果使用 Flash Attention，可能返回 None（Flash Attention 内部处理因果性）
+        #   - 如果所有 token 都有效且没有 cache，某些实现会优化为 is_causal=True 而不是显式 mask
+        # ============================================================================
         causal_mask = create_causal_mask(
             config=self.config,
-            input_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            cache_position=cache_position,
+            input_embeds=inputs_embeds,  # (26, 74, 512)
+            attention_mask=attention_mask,  # (26, 74)
+            cache_position=cache_position,  # (74,)
             past_key_values=past_key_values,
-            position_ids=position_ids,
-        )
+            position_ids=position_ids,  # (26, 74)
+        )  # -> (26, 1, 74, 74) 或 None
+        
+        # ============================================================================
+        # 更新线性注意力 mask（Linear Attention Mask）- 用于线性注意力层
+        # ============================================================================
+        # 作用：线性注意力层（KDA - Kernel Decomposed Attention）使用更简单的 2D mask
+        #      不需要完整的 4D 因果 mask，因为线性注意力的计算方式不同
+        #
+        # 输入参数：
+        #   - attention_mask: (batch_size, seq_len) 例如 (26, 74) - 标记 padding 位置（1=有效，0=padding）
+        #   - cache_position: (seq_len,) 例如 (74,) - 当前位置索引
+        #
+        # 输出：linear_attn_mask (batch_size, seq_len) 或 None
+        #   - 2D mask 例如 (26, 74)，直接标记哪些位置需要被忽略
+        #   - None 表示不需要 mask（优化情况）：
+        #     * 如果使用了 cache（cache_position[0] > 0），说明是增量生成，不需要 mask
+        #     * 如果所有位置都是有效 token（attention_mask 全为 1），不需要 padding mask
+        #
+        # 为什么线性注意力只需要 2D mask？
+        #   - 线性注意力（如 KDA）使用线性复杂度的计算方式
+        #   - 不需要计算完整的注意力矩阵（seq_len × seq_len）
+        #   - 只需要知道哪些位置是 padding，在计算时跳过即可
+        # ============================================================================
         linear_attn_mask = self._update_linear_attn_mask(
-            attention_mask, cache_position)
+            attention_mask, cache_position)  # -> (26, 74) 或 None
+        
 
-        hidden_states = inputs_embeds
+        hidden_states = inputs_embeds  # (batch_size, seq_len, hidden_size) 例如 (26, 74, 512)
         if past_key_values is not None:
             assert isinstance(past_key_values, KimiDynamicCache)
 
-        for decoder_layer in self.layers:
+        # 逐层处理：hidden_states: (batch_size, seq_len, hidden_size) 例如 (26, 74, 512)
+        for layer_idx, decoder_layer in enumerate(self.layers):
+            # 根据层类型选择 mask：线性注意力层用 linear_attn_mask，全注意力层用 causal_mask
             layer_mask = linear_attn_mask if decoder_layer.is_linear_attn else causal_mask
 
+            # decoder_layer 输入输出都是 (batch_size, seq_len, hidden_size)
             hidden_states = decoder_layer(
-                hidden_states,
-                attention_mask=layer_mask,
+                hidden_states,  # (26, 74, 512)
+                attention_mask=layer_mask,  # (26, 1, 74, 74) 或 (26, 74) 或 None
                 past_key_values=past_key_values,
                 cache_position=cache_position,
                 **kwargs,
-            )
+            )  # -> (26, 74, 512)
+        
+        if debug_mode:
+            logger.warning(f"  hidden_states (after {len(self.layers)} layers): {hidden_states.shape}")
 
-        hidden_states = self.norm(hidden_states)
+        # 最终的 RMSNorm：(batch_size, seq_len, hidden_size) -> (batch_size, seq_len, hidden_size)
+        hidden_states = self.norm(hidden_states)  # (26, 74, 512) -> (26, 74, 512)
+        
+        if debug_mode:
+            logger.warning(f"  hidden_states (after {len(self.layers)} layers + norm): {hidden_states.shape}")
+            logger.warning("🔍 [KimiLinearModel] forward 完成")
+            assert 1 == 0, "Debug mode: 在 KimiLinearModel.forward() 结束前中断"
 
+        # 返回最后的 hidden_states: (batch_size, seq_len, hidden_size) 例如 (26, 74, 512)
         return BaseModelOutputWithPast(
-            last_hidden_state=hidden_states,
+            last_hidden_state=hidden_states,  # (26, 74, 512)
             past_key_values=past_key_values,
         )
 
@@ -1116,37 +1228,37 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
         # ============================================================================
         # 注意：数据已经在 DataLoader 的 collate_fn 中完成了 padding 处理
         # 
-        # 输入张量形状：
-        #   - input_ids: (batch_size, seq_len)
-        #     * batch_size: 当前 batch 的样本数量（如果使用 DataParallel，可能是分片后的数量）
-        #     * seq_len: 经过 padding 后的序列长度（每个 batch 可能不同，动态 padding）
-        #     * 例如：(128, 74) 或 (24, 74)（DataParallel 分片后）
+        # 输入张量形状（以 DataParallel 分片后的真实数据为例）：
+        #   - input_ids: (batch_size, seq_len) 例如 (26, 74)
+        #     * batch_size=26: DataParallel 分片后的数量（原始 batch_size=128，分到 5 个 GPU）
+        #     * seq_len=74: 经过 padding 后的序列长度（动态 padding，每个 batch 可能不同）
         #     * padding 位置的值 = pad_token_id（通常是 1）
         #
-        #   - attention_mask: (batch_size, seq_len)
+        #   - attention_mask: (batch_size, seq_len) 例如 (26, 74)
         #     * 形状与 input_ids 相同
         #     * 1 表示真实 token，0 表示 padding 位置
-        #     * 模型使用此 mask 来忽略 padding 位置的 attention 计算
+        #     * 例如：[1,1,1,...,1,0,0,0] 表示前 54 个是真实 token，后 20 个是 padding
         #
-        #   - labels: (batch_size, seq_len) 或 None
+        #   - labels: (batch_size, seq_len) 例如 (26, 74) 或 None
         #     * 形状与 input_ids 相同
         #     * 包含真实 token id 或 -100（用于 mask）
         #     * -100 的位置会被损失函数忽略（PyTorch CrossEntropyLoss 的 ignore_index）
         #     * 在翻译任务中：
-        #       - prompt 部分：-100（不计算损失）
-        #       - 英文部分：真实 token id（计算损失）
-        #       - padding 部分：-100（不计算损失）
+        #       - prompt 部分（前 34 个位置）：-100（不计算损失）
+        #       - 英文部分（接下来 6 个位置）：真实 token id（计算损失）
+        #       - padding 部分（最后 34 个位置）：-100（不计算损失）
+        #     * 例如：[-100,-100,...,-100,6866,299,...,2342,-100,-100,...,-100]
         #
         # 输出 logits 形状：
-        #   - logits: (batch_size, seq_len, vocab_size)
-        #     * 每个位置 i 的 logits 预测下一个 token（即位置 i+1 的 token）
-        #     * 因果语言模型的预测逻辑：logits[i] 对应预测 labels[i]
-        #     * 例如：logits[0] 预测 input_ids[1]，logits[1] 预测 input_ids[2]
+        #   - logits: (batch_size, seq_len, vocab_size) 例如 (26, 74, 8192)
+        #     * 每个位置 i 的 logits 预测该位置的 token（因果语言模型）
+        #     * logits[b, i, :] 是位置 i 在词表上的概率分布（未归一化）
+        #     * 在训练时，logits[b, i, :] 与 labels[b, i] 计算交叉熵
         #
         # 损失计算：
         #   - 使用 logits 和 labels 计算交叉熵损失
         #   - labels 中 -100 的位置会被自动忽略
-        #   - 只对非 -100 的位置（即需要学习的部分）计算损失
+        #   - 只对非 -100 的位置（即英文部分）计算损失
         # ============================================================================
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -1155,9 +1267,12 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # 调用 KimiLinearModel
+        # input_ids: (batch_size, seq_len) 例如 (26, 74)
+        # attention_mask: (batch_size, seq_len) 例如 (26, 74)
         outputs = self.model(
-            input_ids=input_ids, # shape: (batch_size, max_len)
-            attention_mask=attention_mask, # shape: (batch_size, max_len)
+            input_ids=input_ids,  # (26, 74)
+            attention_mask=attention_mask,  # (26, 74)
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
@@ -1166,33 +1281,34 @@ class KimiLinearForCausalLM(KimiPreTrainedModel, GenerationMixin):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             cache_position=cache_position,
-        )
+            # 注意：不传递 debug_mode，让 KimiLinearModel 的 debug_mode 独立控制
+        )  # -> last_hidden_state: (26, 74, 512)
 
-        logits = outputs[0]
+        # outputs[0] 即 last_hidden_state: (batch_size, seq_len, hidden_size) 例如 (26, 74, 512)
+        logits = outputs[0]  # (26, 74, 512)
         if generation_mode:
-            logits = logits[:, -1:]
-        logits = self.lm_head(logits)
+            logits = logits[:, -1:]  # 只取最后一个位置 (26, 1, 512)
+        # lm_head: 线性层投影到词表大小
+        # (batch_size, seq_len, hidden_size) -> (batch_size, seq_len, vocab_size)
+        logits = self.lm_head(logits)  # (26, 74, 512) -> (26, 74, 8192)
 
         # Debug mode: 打印 logits 形状并中断
         if debug_mode:
-            logger.warning("=" * 80)
-            logger.warning("🔍 Debug Mode - Forward Function:")
-            logger.warning(f"  logits shape: {logits.shape}")
-            if input_ids is not None:
-                logger.warning(f"  input_ids shape: {input_ids.shape}")
-                logger.warning(f"  ⚠️ 注意：如果使用了 DataParallel，这里的 batch_size 是分片后的")
-                logger.warning(f"     原始 batch_size 可能更大（例如原始128，分片后可能为24/26等）")
-            if labels is not None:
-                logger.warning(f"  labels shape: {labels.shape}")
-            if attention_mask is not None:
-                logger.warning(f"  attention_mask shape: {attention_mask.shape}")
-            logger.warning("=" * 80)
-            assert 1 == 0, "Debug mode: 在 forward 函数中断点"
+            logger.warning(f"🔍 [KimiLinearForCausalLM] logits: {logits.shape}, vocab_size={self.vocab_size}")
+            logger.warning(f"  ⚠️ 注意：使用 DataParallel 时 batch_size 是分片后的（原始128可能分为24/26等）")
+            assert 1 == 0, "Debug mode: 在 KimiLinearForCausalLM.forward() 中断"
 
         loss = None
         if labels is not None:
+            # 计算损失
+            # logits: (batch_size, seq_len, vocab_size) 例如 (26, 74, 8192)
+            # labels: (batch_size, seq_len) 例如 (26, 74)，其中 -100 位置会被忽略
+            # 损失函数会：
+            #   1. 对每个位置计算交叉熵：比较 logits[b, i, :] 和 labels[b, i]
+            #   2. 忽略 labels[b, i] = -100 的位置（prompt 和 padding）
+            #   3. 只对有效位置（英文部分）计算平均损失
             loss = self.loss_function(
-                logits, labels, self.vocab_size, **kwargs)
+                logits, labels, self.vocab_size, **kwargs)  # -> scalar
 
         return CausalLMOutputWithPast(
             loss=loss,
