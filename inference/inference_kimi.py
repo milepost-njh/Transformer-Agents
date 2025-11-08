@@ -185,20 +185,22 @@ def generate(
         # 第一步：输入完整 prompt；后续步骤：只输入最后一个 token
         if step == 0:
             current_input = input_ids
+            # 第一步：attention_mask 是完整的
             current_attention_mask = attention_mask
         else:
             current_input = torch.tensor([[token_id]], dtype=torch.long, device=device)
-            # 扩展 attention_mask
-            current_attention_mask = torch.cat([
+            # 后续步骤：attention_mask 只对应当前这1个token（全1）
+            current_attention_mask = torch.ones((1, 1), dtype=torch.long, device=device)
+            # 扩展全局attention_mask用于追踪历史
+            attention_mask = torch.cat([
                 attention_mask,
                 torch.ones((1, 1), dtype=torch.long, device=device)
             ], dim=1)
-            attention_mask = current_attention_mask
         
         # 前向传播
         outputs = model(
             input_ids=current_input,
-            attention_mask=current_attention_mask,
+            attention_mask=current_attention_mask,  # 只对应当前输入
             past_key_values=past_key_values,
             use_cache=True,
         )
