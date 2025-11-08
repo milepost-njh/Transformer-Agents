@@ -60,12 +60,20 @@ config = KimiLinearConfig(
 )
 
 # 加载模型
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = KimiLinearForCausalLM(config)
 checkpoint = torch.load("/workspace/checkpoints_kimi_translation_bak/best_e1_s1383.pt", map_location="cpu")
 model_state = checkpoint['model']
 if any(key.startswith('module.') for key in model_state.keys()):
     model_state = {k[7:] if k.startswith('module.') else k: v for k, v in model_state.items()}
 model.load_state_dict(model_state, strict=False)
+
+# 转换到 CUDA 和正确的 dtype
+model = model.to(device)
+if torch.cuda.is_bf16_supported():
+    model = model.to(torch.bfloat16)
+else:
+    model = model.to(torch.float16)
 model.eval()
 
 logger.info("=" * 80)
@@ -83,7 +91,7 @@ prompt = f"Translate Portuguese to English:\n{test_sample['pt']}\nEnglish: "
 full_text = prompt + test_sample['en']
 
 # 编码
-input_ids = tokenizer.encode(full_text, add_special_tokens=True, return_tensors="pt")
+input_ids = tokenizer.encode(full_text, add_special_tokens=True, return_tensors="pt").to(device)
 logger.info(f"\n完整输入: {full_text}")
 logger.info(f"输入长度: {input_ids.shape[1]} tokens")
 
@@ -106,7 +114,7 @@ logger.info("测试：只给 prompt，看模型预测第一个单词")
 logger.info("=" * 80)
 
 prompt_only = f"Translate Portuguese to English:\n{test_sample['pt']}\nEnglish: "
-prompt_ids = tokenizer.encode(prompt_only, add_special_tokens=True, return_tensors="pt")
+prompt_ids = tokenizer.encode(prompt_only, add_special_tokens=True, return_tensors="pt").to(device)
 
 logger.info(f"Prompt: {prompt_only}")
 logger.info(f"Prompt长度: {prompt_ids.shape[1]} tokens")
