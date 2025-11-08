@@ -1,0 +1,87 @@
+--- train_kimi.py.original	2025-11-08 08:00:00.000000000 +0800
++++ train_kimi.py.fixed	2025-11-08 08:05:00.000000000 +0800
+@@ -1925,16 +1925,27 @@
+     return val_loss / len(val_dataloader), val_acc / len(val_dataloader)
+ 
+ 
+-def token_accuracy(real, pred, pad_id):
++def token_accuracy_old_buggy(real, pred, pad_id):
+     """
+-    计算token级别的准确率
++    【已弃用 - 有bug】原始版本的token_accuracy
++    
++    Bug: 没有考虑Causal LM中的shift，导致虚高的准确率
++    """
++    pred_ids = pred.argmax(dim=-1)  # (B, L)
++    mask = (real != pad_id) & (real != -100)
++    correct = ((pred_ids == real) & mask).sum().item()
++    denom = mask.sum().item()
++    return correct / max(1, denom)
++
++
++def token_accuracy(real, pred, pad_id):
++    """
++    计算token级别的准确率（修复版）
+     
+     Args:
+         real: (B, L) 真实标签，可能包含-100（需要忽略的位置）
+         pred: (B, L, V) 预测logits
+-        pad_id: padding token的id（也需要忽略）
++        pad_id: padding token的id（需要忽略）
+     
+     Returns:
+         准确率（0-1之间的浮点数）
+@@ -1943,12 +1954,20 @@
+         在Causal LM中，logits[i]预测的是input_ids[i+1]
+         因此需要将pred_ids和labels进行shift对齐：
+         - pred_ids[:, :-1] 对应 real[:, 1:]
++        
++        注意：如果外部已经手动shift了labels，则不需要在这里shift
+     """
+-    pred_ids = pred.argmax(dim=-1)  # (B, L)
+-    # 同时mask掉pad_id和-100（-100是labels中用于忽略的特殊值）
+-    mask = (real != pad_id) & (real != -100)
+-    correct = ((pred_ids == real) & mask).sum().item()
+-    denom = mask.sum().item()
++    pred_ids = pred.argmax(dim=-1)  # (B, L)
++    
++    # 在Causal LM中，logits[i]预测token[i+1]
++    # 所以应该比较 pred_ids[:, :-1] 和 real[:, 1:]
++    pred_ids_shifted = pred_ids[:, :-1]  # 去掉最后一个预测
++    real_shifted = real[:, 1:]  # 去掉第一个标签
++    
++    # 同时mask掉pad_id和-100（-100是labels中用于忽略的特殊值）
++    mask = (real_shifted != pad_id) & (real_shifted != -100)
++    correct = ((pred_ids_shifted == real_shifted) & mask).sum().item()
++    denom = mask.sum().item()
+     return correct / max(1, denom)
+ 
+ 
+@@ -2379,17 +2398,16 @@
+         # 准备数据
+         input_ids = input_ids.to(device, non_blocking=True)
+         attention_mask = attention_mask.to(device, non_blocking=True)
+-        labels = labels.to(device, non_blocking=True)
+-        
+-        # ⚠️ 重要：手动shift labels来对齐logits
+-        # 因为模型输出的logits[i]对应的是input_ids[i+1]的预测
+-        if labels.dim() > 1:
+-            # labels: (B, L) -> shift left, 最后一位补-100
+-            labels = torch.cat([labels[:, 1:], torch.full((labels.size(0), 1), -100, dtype=torch.long, device=device)], dim=1)
++        labels = labels.to(device, non_blocking=True)
++        
++        # 🔧 修复：移除手动shift！
++        # HuggingFace的KimiLinearForCausalLM内部已经自动处理shift
++        # 手动shift会导致：
++        #   1. 双重shift（模型内部会再shift一次）
++        #   2. EOS token的训练目标丢失（最后一位被设为-100）
++        #   3. 模型学不会正确生成EOS token
+         
+         with autocast_ctx:
+-            outputs = model(
+-                input_ids=input_ids,
++            outputs = model(input_ids=input_ids,
+                 attention_mask=attention_mask,
+                 labels=labels,
+                 use_cache=False,
+

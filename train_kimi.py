@@ -1927,20 +1927,31 @@ def create_masks(
 @torch.no_grad()
 def token_accuracy(real, pred, pad_id):
     """
-    计算token级别的准确率
+    计算token级别的准确率（修复版）
     
     Args:
         real: (B, L) 真实标签，可能包含-100（需要忽略的位置）
         pred: (B, L, V) 预测logits
-        pad_id: padding token的id（也需要忽略）
+        pad_id: padding token的id（需要忽略）
     
     Returns:
         准确率（0-1之间的浮点数）
+    
+    注意:
+        在Causal LM中，logits[i]预测的是input_ids[i+1]
+        因此需要将pred_ids和labels进行shift对齐：
+        - pred_ids[:, :-1] 对应 real[:, 1:]
     """
     pred_ids = pred.argmax(dim=-1)  # (B, L)
+    
+    # 在Causal LM中，logits[i]预测token[i+1]
+    # 所以应该比较 pred_ids[:, :-1] 和 real[:, 1:]
+    pred_ids_shifted = pred_ids[:, :-1]  # 去掉最后一个预测
+    real_shifted = real[:, 1:]  # 去掉第一个标签
+    
     # 同时mask掉pad_id和-100（-100是labels中用于忽略的特殊值）
-    mask = (real != pad_id) & (real != -100)
-    correct = ((pred_ids == real) & mask).sum().item()
+    mask = (real_shifted != pad_id) & (real_shifted != -100)
+    correct = ((pred_ids_shifted == real_shifted) & mask).sum().item()
     denom = mask.sum().item()
     return correct / max(1, denom)
 
