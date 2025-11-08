@@ -198,26 +198,32 @@ def generate(
         # 取最后一个 token 的 logits
         next_token_logits = logits[:, -1, :]
         
-        # 应用温度
-        if temperature != 1.0:
-            next_token_logits = next_token_logits / temperature
-        
-        # Top-p (nucleus) sampling
-        if top_p < 1.0:
-            sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-            cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+        # 使用贪婪解码（最简单、最确定的方法）
+        if temperature == 0.0:
+            # 贪婪解码：直接选择概率最大的 token
+            token_id = torch.argmax(next_token_logits, dim=-1).item()
+        else:
+            # 采样模式
+            # 应用温度
+            if temperature != 1.0:
+                next_token_logits = next_token_logits / temperature
             
-            # 移除累积概率超过 top_p 的 tokens
-            sorted_indices_to_remove = cumulative_probs > top_p
-            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-            sorted_indices_to_remove[..., 0] = 0
+            # Top-p (nucleus) sampling
+            if top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                
+                # 移除累积概率超过 top_p 的 tokens
+                sorted_indices_to_remove = cumulative_probs > top_p
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                sorted_indices_to_remove[..., 0] = 0
+                
+                indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                next_token_logits[indices_to_remove] = float('-inf')
             
-            indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-            next_token_logits[indices_to_remove] = float('-inf')
-        
-        # 采样
-        probs = torch.softmax(next_token_logits, dim=-1)
-        token_id = torch.multinomial(probs, num_samples=1).item()
+            # 采样
+            probs = torch.softmax(next_token_logits, dim=-1)
+            token_id = torch.multinomial(probs, num_samples=1).item()
         
         # 检查是否结束
         if token_id == tokenizer.eos_token_id:
@@ -226,13 +232,15 @@ def generate(
         
         generated_tokens.append(token_id)
         
-        # 每 20 步打印一次进度
-        if (step + 1) % 20 == 0:
-            partial_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
-            logger.info(f"Step {step+1}: {partial_text}")
+        # 每 50 步打印一次进度（可选）
+        # if (step + 1) % 50 == 0:
+        #     partial_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        #     logger.info(f"Step {step+1}: {partial_text[:100]}...")
     
     # 解码生成的文本
     generated_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+    
+    logger.info(f"✅ Generated {len(generated_tokens)} tokens")
     
     return generated_text
 
@@ -240,7 +248,10 @@ def generate(
 def main():
     """主函数"""
     # 配置
-    checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e2_s2766.pt"
+    # 使用 epoch 6 的checkpoint（验证loss最低，泛化能力最强）
+    checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e6_s8298.pt"
+    # 备选：epoch 7 也不错
+    # checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e7_s9681.pt"
     tokenizer_path = "tok_en/tokenizer.json"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -288,14 +299,14 @@ def main():
         logger.info(f"{'='*80}")
         logger.info(f"📥 Portuguese: {pt_text}")
         
-        # 生成翻译
+        # 生成翻译（使用贪婪解码以获得最确定的结果）
         en_text = generate(
             model=model,
             tokenizer=tokenizer,
             input_text=pt_text,
-            max_new_tokens=128,
-            temperature=0.7,
-            top_p=0.9,
+            max_new_tokens=64,  # 减少最大长度，翻译通常不需要太长
+            temperature=0.0,     # 贪婪解码：选择最可能的token
+            top_p=0.9,           # 贪婪模式下此参数无效
             device=device
         )
         
