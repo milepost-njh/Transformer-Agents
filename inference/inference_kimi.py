@@ -171,6 +171,9 @@ def generate(
     input_ids = tokenizer.encode(prompt, add_special_tokens=True, return_tensors="pt")
     input_ids = input_ids.to(device)
     
+    # 创建 attention_mask（全为1，因为没有padding）
+    attention_mask = torch.ones_like(input_ids)
+    
     logger.info(f"Input prompt: {prompt}")
     logger.info(f"Input length: {input_ids.shape[1]} tokens")
     
@@ -182,12 +185,20 @@ def generate(
         # 第一步：输入完整 prompt；后续步骤：只输入最后一个 token
         if step == 0:
             current_input = input_ids
+            current_attention_mask = attention_mask
         else:
             current_input = torch.tensor([[token_id]], dtype=torch.long, device=device)
+            # 扩展 attention_mask
+            current_attention_mask = torch.cat([
+                attention_mask,
+                torch.ones((1, 1), dtype=torch.long, device=device)
+            ], dim=1)
+            attention_mask = current_attention_mask
         
         # 前向传播
         outputs = model(
             input_ids=current_input,
+            attention_mask=current_attention_mask,
             past_key_values=past_key_values,
             use_cache=True,
         )
