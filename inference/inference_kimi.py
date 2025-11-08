@@ -141,6 +141,14 @@ def load_model(checkpoint_path: str, config: KimiLinearConfig, device: str = "cu
     model.eval()
     model.to(device)
     
+    # 转换模型为 bfloat16（Flash Attention 要求）
+    if torch.cuda.is_bf16_supported():
+        logger.info("Converting model to bfloat16 for Flash Attention...")
+        model = model.to(torch.bfloat16)
+    else:
+        logger.info("Converting model to float16 for Flash Attention...")
+        model = model.to(torch.float16)
+    
     return model
 
 
