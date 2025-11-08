@@ -204,7 +204,7 @@ print(f"KV-cache显存: {result['total_cache_memory_mb']:.2f} MB")
 ```bash
 # 单模型测试：对比真实KV-cache vs 模拟KV-cache
 CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
-    --mla_checkpoint checkpoints/mid_e1_s222.pt \
+    --mla_checkpoint checkpoints/latest.pt \
     --test_lengths 128
 
 # MLA vs 标准注意力对比

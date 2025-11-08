@@ -535,8 +535,14 @@ def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str,
         model, pt_tokenizer, en_tokenizer, device, use_mla, config
     )
     
+    # 打印输入句子
+    logger.success(f"📥 输入句子: {test_input}")
+    
     # 执行生成
     result = engine.generate_with_kv_cache(test_input, max_new_tokens, use_real_cache=use_real_cache, verbose_tokens=verbose_tokens)
+    
+    # 打印输出句子
+    logger.success(f"📤 输出句子: {result['output']}")
     
     # 打印关键结果
     logger.info(f"\n生成: {result['num_tokens_generated']} tokens | 时间: {result['generation_time']:.3f}s | KV-cache: {result['max_kv_cache_size']:.2f} MB")
