@@ -515,7 +515,21 @@ def build_translation_dataloaders(
                 #   3. 使用 -100 mask 可以让损失函数忽略这些位置，只计算英文部分的损失
                 # ============================================================================
                 prompt_len = len([bos_id] + prompt_ids)  # BOS + prompt 的总长度
-                labels = [-100] * prompt_len + en_ids + [eos_id]  # prompt部分mask，英文部分保留
+                
+                # 🔧 修复：labels需要向左shift一位
+                # 原因：在Causal LM中，logits[i]预测input_ids[i+1]
+                # 所以labels[i]应该等于input_ids[i+1]
+                #
+                # 错误的构建方式（之前）：
+                #   labels = [-100] * prompt_len + en_ids + [eos_id]
+                #   导致 labels[prompt_len] = en_ids[0] = input_ids[prompt_len]
+                #
+                # 正确的构建方式：
+                #   先构建未shift的labels，然后向左shift一位
+                #   labels[prompt_len-1] = en_ids[0]（看到完整prompt后，预测第一个英文词）
+                #   labels[prompt_len] = en_ids[1]（看到prompt+第一个词后，预测第二个词）
+                labels_unshifted = [-100] * prompt_len + en_ids + [eos_id]
+                labels = labels_unshifted[1:] + [-100]  # 向左shift一位，最后补-100
                 
                 assert len(input_ids) == len(labels), f"长度不匹配: {len(input_ids)} vs {len(labels)}"
                 
@@ -1927,7 +1941,7 @@ def create_masks(
 @torch.no_grad()
 def token_accuracy(real, pred, pad_id):
     """
-    计算token级别的准确率（修复版）
+    计算token级别的准确率
     
     Args:
         real: (B, L) 真实标签，可能包含-100（需要忽略的位置）
@@ -1939,19 +1953,14 @@ def token_accuracy(real, pred, pad_id):
     
     注意:
         在Causal LM中，logits[i]预测的是input_ids[i+1]
-        因此需要将pred_ids和labels进行shift对齐：
-        - pred_ids[:, :-1] 对应 real[:, 1:]
+        我们的labels已经在数据准备阶段shift过了（labels[i] = input_ids[i+1]）
+        所以这里直接比较 pred_ids[i] 和 labels[i] 即可
     """
     pred_ids = pred.argmax(dim=-1)  # (B, L)
     
-    # 在Causal LM中，logits[i]预测token[i+1]
-    # 所以应该比较 pred_ids[:, :-1] 和 real[:, 1:]
-    pred_ids_shifted = pred_ids[:, :-1]  # 去掉最后一个预测
-    real_shifted = real[:, 1:]  # 去掉第一个标签
-    
-    # 同时mask掉pad_id和-100（-100是labels中用于忽略的特殊值）
-    mask = (real_shifted != pad_id) & (real_shifted != -100)
-    correct = ((pred_ids_shifted == real_shifted) & mask).sum().item()
+    # labels已经在数据准备阶段shift过了，所以直接比较
+    mask = (real != pad_id) & (real != -100)
+    correct = ((pred_ids == real) & mask).sum().item()
     denom = mask.sum().item()
     return correct / max(1, denom)
 
