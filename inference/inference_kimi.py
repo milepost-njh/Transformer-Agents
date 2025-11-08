@@ -248,10 +248,12 @@ def generate(
 def main():
     """主函数"""
     # 配置
-    # 使用 epoch 6 的checkpoint（验证loss最低，泛化能力最强）
-    checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e6_s8298.pt"
-    # 备选：epoch 7 也不错
-    # checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e7_s9681.pt"
+    # 尝试使用 epoch 1 的checkpoint（早期训练状态）
+    checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e1_s1383.pt"
+    # 其他可选的checkpoint：
+    # checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e3_s4149.pt"  # epoch 3
+    # checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e6_s8298.pt"  # epoch 6 (验证loss最低)
+    # checkpoint_path = "/workspace/checkpoints_kimi_translation_bak/best_e7_s9681.pt"  # epoch 7
     tokenizer_path = "tok_en/tokenizer.json"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -299,14 +301,18 @@ def main():
         logger.info(f"{'='*80}")
         logger.info(f"📥 Portuguese: {pt_text}")
         
-        # 生成翻译（使用贪婪解码以获得最确定的结果）
+        # 生成翻译
+        # 注意：可以调整 temperature 来改变生成策略
+        # temperature=0.0: 贪婪解码（最确定）
+        # temperature=0.3-0.7: 轻微随机（可能避免循环）
+        # temperature=1.0: 标准采样
         en_text = generate(
             model=model,
             tokenizer=tokenizer,
             input_text=pt_text,
-            max_new_tokens=64,  # 减少最大长度，翻译通常不需要太长
-            temperature=0.0,     # 贪婪解码：选择最可能的token
-            top_p=0.9,           # 贪婪模式下此参数无效
+            max_new_tokens=64,   # 减少最大长度，翻译通常不需要太长
+            temperature=0.3,     # 轻微随机，避免陷入循环
+            top_p=0.9,           # Top-p 采样
             device=device
         )
         
