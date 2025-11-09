@@ -2065,8 +2065,8 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
     model_for_grad_clip = transformer.module if use_multi_gpu else transformer
     grad_norm = torch.nn.utils.clip_grad_norm_(model_for_grad_clip.parameters(), max_norm=0.5)
 
-    # 2. 更严格的梯度监控（与参考脚本一致）
-    if grad_norm > 5.0:
+    # 2. 更严格的梯度监控（🔧 修复：降低阈值从5.0到3.0，更早发现梯度爆炸）
+    if grad_norm > 3.0:
         if global_step <= 100 or global_step % 100 == 0:
             logger.warning(f"Large gradient norm detected: {grad_norm:.4f}")
         # 如果梯度范数过大，进一步裁剪到 0.1
@@ -2624,7 +2624,7 @@ if __name__ == "__main__":
     batch_size = 128  # 增大batch_size充分利用GPU（5卡 × 25.6/卡）
     warmup_steps = 4000  # 与参考脚本保持一致
     epochs = 20  # 与参考脚本保持一致（原15改为20）
-    learning_rate = 2e-4  # batch_size翻倍，learning_rate也翻倍（线性缩放）
+    learning_rate = 5e-5  # 🔧 修复：进一步降低到5e-5，更保守更稳定，避免训练后期崩溃
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
