@@ -1,0 +1,293 @@
+2025-11-08 10:49:17.578 | INFO     | __main__:<module>:2593 - 🚀 Training Configuration:
+2025-11-08 10:49:17.579 | INFO     | __main__:<module>:2594 -    - Model: Kimi Causal LM
+2025-11-08 10:49:17.579 | INFO     | __main__:<module>:2595 -    - MLA (Multi-head Latent Attention): True
+2025-11-08 10:49:17.579 | INFO     | __main__:<module>:2596 -    - MTP (Multi-Token Prediction): False
+2025-11-08 10:49:17.579 | INFO     | __main__:<module>:2597 -    - MoE: True (fixed)
+2025-11-08 10:49:17.579 | INFO     | __main__:<module>:2598 -    - Random Seed: 42
+2025-11-08 10:49:17.579 | INFO     | __main__:<module>:2615 -    - Checkpoint目录: checkpoints_kimi_translation
+2025-11-08 10:49:17.579 | INFO     | __main__:check_env:217 - ✅ 检测到 5 张GPU: NVIDIA L20, bf16支持: True
+/usr/local/lib/python3.12/dist-packages/torch/backends/__init__.py:46: UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at /opt/pytorch/pytorch/aten/src/ATen/Context.cpp:80.)
+  self.setter(val)
+2025-11-08 10:49:17.579 | INFO     | __main__:setup_multi_gpu:160 - 检测到 5 张GPU
+2025-11-08 10:49:17.579 | INFO     | __main__:setup_multi_gpu:163 - 启用多卡训练，使用 5 张GPU
+2025-11-08 10:49:17.580 | INFO     | __main__:set_random_seed:260 - 🎲 随机数种子已设置: 42
+2025-11-08 10:49:17.580 | INFO     | __main__:set_random_seed:261 -    - Python random seed: 42
+2025-11-08 10:49:17.581 | INFO     | __main__:set_random_seed:262 -    - NumPy seed: 42
+2025-11-08 10:49:17.581 | INFO     | __main__:set_random_seed:263 -    - PyTorch seed: 42
+2025-11-08 10:49:17.581 | INFO     | __main__:set_random_seed:265 -    - CUDA seed: 42
+2025-11-08 10:49:17.581 | INFO     | __main__:set_random_seed:266 -    - CUDNN deterministic: True (可能影响性能)
+2025-11-08 10:49:17.581 | INFO     | __main__:<module>:2678 - 发现已保存的tokenizers，直接加载...
+2025-11-08 10:49:17.610 | INFO     | __main__:<module>:2692 - ✅ Tokenizers加载完成: pt词表 8192, en词表 8192
+2025-11-08 10:49:17.610 | INFO     | __main__:test_tokenizers:400 - === 英文 Tokenizer 测试 ===
+2025-11-08 10:49:17.611 | INFO     | __main__:test_tokenizers:403 - 原文: Transformer is awesome.
+2025-11-08 10:49:17.611 | INFO     | __main__:test_tokenizers:404 - Token IDs: [56, 86, 1102, 7188, 962, 299, 5984, 18]
+2025-11-08 10:49:17.611 | INFO     | __main__:test_tokenizers:405 - 解码结果: Transformer is awesome.
+2025-11-08 10:49:17.611 | INFO     | __main__:test_tokenizers:409 - 
+=== 葡萄牙语 Tokenizer 测试 ===
+2025-11-08 10:49:17.611 | INFO     | __main__:test_tokenizers:412 - 原文: Transformers são incríveis.
+2025-11-08 10:49:17.611 | INFO     | __main__:test_tokenizers:413 - Token IDs: [56, 415, 87, 74, 735, 269, 87, 551, 1335, 86, 3499, 18]
+2025-11-08 10:49:17.611 | INFO     | __main__:test_tokenizers:414 - 解码结果: Transformers são incríveis.
+2025-11-08 10:49:17.611 | INFO     | __main__:test_tokenizers:417 - 
+✅ Tokenizers测试通过
+2025-11-08 10:49:17.611 | INFO     | __main__:<module>:2722 - 📊 Tokenizer信息:
+2025-11-08 10:49:17.612 | INFO     | __main__:<module>:2723 -    - 葡语词表: 8192
+2025-11-08 10:49:17.613 | INFO     | __main__:<module>:2724 -    - 英语词表: 8192
+2025-11-08 10:49:17.613 | INFO     | __main__:<module>:2725 -    - 主tokenizer: 英语 (用于模型)
+2025-11-08 10:49:17.613 | INFO     | __main__:<module>:2726 -    - pad_token_id: 1
+2025-11-08 10:49:17.613 | INFO     | __main__:<module>:2727 -    - bos_token_id: 0
+2025-11-08 10:49:17.613 | INFO     | __main__:<module>:2728 -    - eos_token_id: 2
+2025-11-08 10:49:17.613 | INFO     | __main__:<module>:2737 - 
+🏗️  开始构建模型...
+2025-11-08 10:49:17.614 | INFO     | __main__:<module>:2738 -    - 模型类型: Kimi因果LM
+2025-11-08 10:49:17.614 | INFO     | __main__:<module>:2739 -    - 词表大小: 8192
+2025-11-08 10:49:17.614 | INFO     | __main__:<module>:2740 -    - 隐藏层数: 8
+2025-11-08 10:49:17.614 | INFO     | __main__:<module>:2741 -    - 隐藏维度: 512
+2025-11-08 10:49:17.614 | INFO     | __main__:<module>:2742 -    - 注意力头数: 8
+2025-11-08 10:49:17.614 | INFO     | __main__:<module>:2743 -    - FFN维度: 2048
+2025-11-08 10:49:19.906 | INFO     | __main__:<module>:2809 - ✅ 模型权重检查通过：无 NaN 或 Inf
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2815 - ================================================================================
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2816 - 📊 Kimi 模型参数统计
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2817 - ================================================================================
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2818 -    总参数: 216,705,600
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2819 -    可训练参数: 216,705,600
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2820 -    不可训练参数: 0
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2821 -    模型大小: 826.67 MB (FP32)
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2822 -    模型大小: 413.33 MB (FP16/BF16)
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2823 - 
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2824 - 🔧 模型配置:
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2825 -    隐藏层数: 8
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2826 -    隐藏维度: 512
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2827 -    注意力头数: 8
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2828 -    FFN维度: 2048
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2829 -    词表大小: 8192
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2830 - 
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2831 - 🔧 MoE配置:
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2832 -    专家数量: 8
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2833 -    每token激活专家: 2
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2834 -    路由专家数量: 8
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2835 - 
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2836 - 🔧 MLA配置:
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2837 -    使用MLA: True
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2838 -    KV LoRA Rank: 256
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2839 -    QK Nope Head Dim: 32
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2840 -    QK RoPE Head Dim: 32
+2025-11-08 10:49:19.908 | INFO     | __main__:<module>:2841 -    V Head Dim: 64
+2025-11-08 10:49:19.909 | INFO     | __main__:<module>:2842 - ================================================================================
+2025-11-08 10:49:19.909 | INFO     | __main__:<module>:2844 - ✅ Kimi 因果语言模型初始化完成
+2025-11-08 10:49:19.909 | INFO     | __main__:<module>:2920 - 开始加载翻译数据集...
+2025-11-08 10:49:19.909 | INFO     | __main__:load_translation_dataset:281 - 开始加载翻译数据集...
+2025-11-08 10:49:20.594 | INFO     | __main__:load_translation_dataset:295 - ✅ 翻译数据集加载完成: 训练集 176959 条, 验证集 19663 条
+2025-11-08 10:49:20.595 | INFO     | __main__:load_translation_dataset:299 - 示例数据 -> pt: por... | en: en...
+2025-11-08 10:49:20.595 | INFO     | __main__:<module>:2924 - 开始构建翻译DataLoader...
+Token indices sequence length is longer than the specified maximum sequence length for this model (155 > 128). Running this sequence through the model will result in indexing errors
+2025-11-08 10:49:47.765 | INFO     | __main__:build_filtered_translation_sequences:554 - 过滤结果: kept=176947, skipped=12, max_length=128
+2025-11-08 10:49:51.213 | INFO     | __main__:build_filtered_translation_sequences:554 - 过滤结果: kept=19663, skipped=0, max_length=128
+2025-11-08 10:49:51.213 | INFO     | __main__:build_translation_dataloaders:560 - ✅ 翻译数据集构建完成: 训练集 176947 条, 验证集 19663 条
+2025-11-08 10:49:51.214 | INFO     | __main__:<module>:2936 - ✅ 翻译DataLoader构建完成
+2025-11-08 10:49:51.673 | INFO     | __main__:wrap_model_for_multi_gpu:180 - 使用DataParallel包装模型，GPU数量: 5
+2025-11-08 10:49:52.516 | INFO     | __main__:<module>:3076 - 📊 训练步数统计:
+2025-11-08 10:49:52.517 | INFO     | __main__:<module>:3077 -    - 总训练步数: 27660
+2025-11-08 10:49:52.517 | INFO     | __main__:<module>:3078 -    - Warmup步数: 4000 (14.5%)
+2025-11-08 10:49:52.517 | INFO     | __main__:<module>:3100 - ✅ 开始训练: lr=0.0002, epochs=20, batch_size=128
+2025-11-08 10:49:52.520 | INFO     | __main__:train_model:2123 - TensorBoard logs will be saved to: runs/transformer_rope_20251108_104952
+/usr/local/lib/python3.12/dist-packages/torch/nn/parallel/_functions.py:71: UserWarning: Was asked to gather along dimension 0, but all input tensors were scalars; will instead unsqueeze and return a vector.
+  warnings.warn(
+2025-11-08 10:49:57.327 | INFO     | __main__:train_step:2046 - 📊 First batch debug info:
+2025-11-08 10:49:57.338 | INFO     | __main__:train_step:2047 -   - input_ids shape: torch.Size([128, 74]), min: 0, max: 8173
+2025-11-08 10:49:57.339 | INFO     | __main__:train_step:2048 -   - labels shape: torch.Size([128, 74]), min: -100, max: 8158
+2025-11-08 10:49:57.345 | INFO     | __main__:train_step:2049 -   - logits shape: torch.Size([128, 74, 8192]), contains NaN: False, contains Inf: False
+2025-11-08 10:49:57.347 | INFO     | __main__:train_step:2050 -   - logits min: -2.2051, max: 2.1797, mean: -0.0028
+2025-11-08 10:49:57.347 | INFO     | __main__:train_step:2051 -   - loss: 1.1504
+2025-11-08 10:49:58.009 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 0 global_step 1 Loss 1.1504 Accuracy 0.0000 GradNorm 1.5967 LR 5.00e-08 GPU0内存: 3.24GB/3.51GB
+2025-11-08 10:51:32.688 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 100 global_step 101 Loss 0.9487 Accuracy 0.1078 GradNorm 0.4156 LR 5.05e-06 GPU0内存: 3.25GB/9.01GB
+2025-11-08 10:53:07.894 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 200 global_step 201 Loss 0.8491 Accuracy 0.1865 GradNorm 0.7427 LR 1.01e-05 GPU0内存: 3.25GB/9.03GB
+2025-11-08 10:54:44.249 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 300 global_step 301 Loss 0.7863 Accuracy 0.2424 GradNorm 1.3849 LR 1.50e-05 GPU0内存: 3.25GB/9.03GB
+2025-11-08 10:56:18.603 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 400 global_step 401 Loss 0.7351 Accuracy 0.2831 GradNorm 1.4923 LR 2.01e-05 GPU0内存: 3.25GB/10.03GB
+2025-11-08 10:57:43.532 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 500 global_step 501 Loss 0.6939 Accuracy 0.3152 GradNorm 1.2000 LR 2.51e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 10:59:08.807 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 600 global_step 601 Loss 0.6604 Accuracy 0.3418 GradNorm 0.9135 LR 3.01e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 11:00:49.708 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 700 global_step 701 Loss 0.6300 Accuracy 0.3641 GradNorm 0.9536 LR 3.50e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 11:02:27.759 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 800 global_step 801 Loss 0.6037 Accuracy 0.3838 GradNorm 0.7267 LR 4.01e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 11:03:53.125 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 900 global_step 901 Loss 0.5783 Accuracy 0.4020 GradNorm 0.5447 LR 4.51e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 11:05:39.213 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 1000: checkpoints_kimi_translation/step1000_e0_s1000.pt
+2025-11-08 11:05:39.584 | INFO     | __main__:train_model:2223 - 🗑️  Removed old checkpoint: checkpoints_kimi_translation/step1000_e0_s1000.pt
+2025-11-08 11:05:40.420 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 1000 global_step 1001 Loss 0.5556 Accuracy 0.4182 GradNorm 0.6561 LR 5.00e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 11:07:12.565 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 1100 global_step 1101 Loss 0.5348 Accuracy 0.4328 GradNorm 0.4697 LR 5.51e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 11:08:48.909 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 1200 global_step 1201 Loss 0.5156 Accuracy 0.4469 GradNorm 0.5563 LR 6.01e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 11:10:33.596 | INFO     | __main__:train_model:2196 - Epoch 1 Batch 1300 global_step 1301 Loss 0.4988 Accuracy 0.4598 GradNorm 0.4043 LR 6.50e-05 GPU0内存: 3.25GB/10.04GB
+2025-11-08 11:11:57.169 | INFO     | __main__:train_model:2230 - Epoch 1 Loss 0.4862 Accuracy 0.4697
+2025-11-08 11:11:57.169 | INFO     | __main__:train_model:2231 - Time taken for 1 epoch: 1324.65 secs
+
+2025-11-08 11:13:02.817 | INFO     | __main__:train_model:2240 - Validation - Epoch 1 Loss: 0.2794, Accuracy: 0.6306
+
+2025-11-08 11:13:19.923 | INFO     | __main__:train_model:2268 - 🏆 New best model! Validation Loss: 0.2794 (saved as best.pt)
+2025-11-08 11:13:21.473 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 0 global_step 1384 Loss 0.2496 Accuracy 0.6360 GradNorm 0.4399 LR 6.92e-05 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:14:57.677 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 100 global_step 1484 Loss 0.2592 Accuracy 0.6518 GradNorm 0.5023 LR 7.42e-05 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:16:27.946 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 200 global_step 1584 Loss 0.2553 Accuracy 0.6570 GradNorm 0.5253 LR 7.92e-05 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:18:05.257 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 300 global_step 1684 Loss 0.2508 Accuracy 0.6612 GradNorm 0.4341 LR 8.42e-05 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:19:39.802 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 400 global_step 1784 Loss 0.2466 Accuracy 0.6648 GradNorm 0.5684 LR 8.92e-05 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:21:16.141 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 500 global_step 1884 Loss 0.2433 Accuracy 0.6694 GradNorm 0.4631 LR 9.42e-05 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:22:44.876 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 600 global_step 1984 Loss 0.2395 Accuracy 0.6731 GradNorm 0.4956 LR 9.92e-05 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:23:06.644 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 2000: checkpoints_kimi_translation/step2000_e1_s2000.pt
+2025-11-08 11:23:06.946 | INFO     | __main__:train_model:2223 - 🗑️  Removed old checkpoint: checkpoints_kimi_translation/step2000_e1_s2000.pt
+2025-11-08 11:24:30.030 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 700 global_step 2084 Loss 0.2356 Accuracy 0.6766 GradNorm 0.3940 LR 1.04e-04 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:26:05.618 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 800 global_step 2184 Loss 0.2319 Accuracy 0.6802 GradNorm 0.4213 LR 1.09e-04 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:27:49.681 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 900 global_step 2284 Loss 0.2285 Accuracy 0.6836 GradNorm 0.4700 LR 1.14e-04 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:29:31.175 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 1000 global_step 2384 Loss 0.2252 Accuracy 0.6869 GradNorm 0.4910 LR 1.19e-04 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:31:02.249 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 1100 global_step 2484 Loss 0.2224 Accuracy 0.6902 GradNorm 0.4597 LR 1.24e-04 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:32:37.062 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 1200 global_step 2584 Loss 0.2191 Accuracy 0.6936 GradNorm 0.3788 LR 1.29e-04 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:34:16.468 | INFO     | __main__:train_model:2196 - Epoch 2 Batch 1300 global_step 2684 Loss 0.2163 Accuracy 0.6969 GradNorm 0.4025 LR 1.34e-04 GPU0内存: 3.25GB/10.06GB
+2025-11-08 11:35:34.880 | INFO     | __main__:train_model:2230 - Epoch 2 Loss 0.2140 Accuracy 0.6994
+2025-11-08 11:35:34.880 | INFO     | __main__:train_model:2231 - Time taken for 1 epoch: 1334.96 secs
+
+2025-11-08 11:36:51.010 | INFO     | __main__:train_model:2240 - Validation - Epoch 2 Loss: 0.1793, Accuracy: 0.7375
+
+2025-11-08 11:37:06.063 | INFO     | __main__:train_model:2268 - 🏆 New best model! Validation Loss: 0.1793 (saved as best.pt)
+2025-11-08 11:37:07.294 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 0 global_step 2767 Loss 0.1472 Accuracy 0.7628 GradNorm 0.3208 LR 1.38e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:38:40.010 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 100 global_step 2867 Loss 0.1544 Accuracy 0.7723 GradNorm 0.3420 LR 1.43e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:40:18.240 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 200 global_step 2967 Loss 0.1547 Accuracy 0.7717 GradNorm 0.4303 LR 1.48e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:40:55.924 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 3000: checkpoints_kimi_translation/step3000_e2_s3000.pt
+2025-11-08 11:40:56.422 | INFO     | __main__:train_model:2223 - 🗑️  Removed old checkpoint: checkpoints_kimi_translation/step3000_e2_s3000.pt
+2025-11-08 11:42:02.787 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 300 global_step 3067 Loss 0.1534 Accuracy 0.7729 GradNorm 0.4096 LR 1.53e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:43:42.447 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 400 global_step 3167 Loss 0.1532 Accuracy 0.7724 GradNorm 0.4059 LR 1.58e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:45:17.830 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 500 global_step 3267 Loss 0.1523 Accuracy 0.7730 GradNorm 0.3734 LR 1.63e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:46:45.628 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 600 global_step 3367 Loss 0.1515 Accuracy 0.7732 GradNorm 0.4522 LR 1.68e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:48:09.466 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 700 global_step 3467 Loss 0.1514 Accuracy 0.7731 GradNorm 0.4797 LR 1.73e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:49:38.383 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 800 global_step 3567 Loss 0.1508 Accuracy 0.7738 GradNorm 0.3209 LR 1.78e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:51:17.960 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 900 global_step 3667 Loss 0.1499 Accuracy 0.7743 GradNorm 0.2689 LR 1.83e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:52:55.322 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 1000 global_step 3767 Loss 0.1497 Accuracy 0.7748 GradNorm 0.3718 LR 1.88e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:54:31.705 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 1100 global_step 3867 Loss 0.1491 Accuracy 0.7754 GradNorm 0.4217 LR 1.93e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:56:14.793 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 1200 global_step 3967 Loss 0.1486 Accuracy 0.7758 GradNorm 0.3137 LR 1.98e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:56:53.135 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 4000: checkpoints_kimi_translation/step4000_e2_s4000.pt
+2025-11-08 11:56:53.856 | INFO     | __main__:train_model:2223 - 🗑️  Removed old checkpoint: checkpoints_kimi_translation/step4000_e2_s4000.pt
+2025-11-08 11:57:57.231 | INFO     | __main__:train_model:2196 - Epoch 3 Batch 1300 global_step 4067 Loss 0.1481 Accuracy 0.7760 GradNorm 0.3843 LR 2.00e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 11:59:13.763 | INFO     | __main__:train_model:2230 - Epoch 3 Loss 0.1478 Accuracy 0.7762
+2025-11-08 11:59:13.764 | INFO     | __main__:train_model:2231 - Time taken for 1 epoch: 1327.70 secs
+
+2025-11-08 12:00:24.790 | INFO     | __main__:train_model:2240 - Validation - Epoch 3 Loss: 0.1537, Accuracy: 0.7641
+
+2025-11-08 12:00:40.254 | INFO     | __main__:train_model:2268 - 🏆 New best model! Validation Loss: 0.1537 (saved as best.pt)
+2025-11-08 12:00:41.485 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 0 global_step 4150 Loss 0.1538 Accuracy 0.7986 GradNorm 0.5813 LR 2.00e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:02:17.605 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 100 global_step 4250 Loss 0.1261 Accuracy 0.7986 GradNorm 0.4152 LR 2.00e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:03:52.744 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 200 global_step 4350 Loss 0.1288 Accuracy 0.7949 GradNorm 0.6537 LR 2.00e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:05:19.421 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 300 global_step 4450 Loss 0.1725 Accuracy 0.7474 GradNorm 3.1249 LR 2.00e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:06:54.591 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 400 global_step 4550 Loss 0.2718 Accuracy 0.6390 GradNorm 2.6265 LR 2.00e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:08:31.140 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 500 global_step 4650 Loss 0.3338 Accuracy 0.5692 GradNorm 0.7845 LR 2.00e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:09:22.462 | WARNING  | __main__:train_step:2071 - Large gradient norm detected: 13.2790
+2025-11-08 12:09:22.464 | WARNING  | __main__:train_step:2075 - Applied additional gradient clipping to 0.1
+2025-11-08 12:10:02.950 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 600 global_step 4750 Loss 0.3787 Accuracy 0.5234 GradNorm 9.7049 LR 2.00e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:11:45.872 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 700 global_step 4850 Loss 0.4033 Accuracy 0.4931 GradNorm 2.1824 LR 1.99e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:13:12.756 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 800 global_step 4950 Loss 0.4185 Accuracy 0.4727 GradNorm 4.5061 LR 1.99e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:14:01.959 | WARNING  | __main__:train_step:2071 - Large gradient norm detected: 16.1096
+2025-11-08 12:14:01.962 | WARNING  | __main__:train_step:2075 - Applied additional gradient clipping to 0.1
+2025-11-08 12:14:09.634 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 5000: checkpoints_kimi_translation/step5000_e3_s5000.pt
+2025-11-08 12:14:09.900 | INFO     | __main__:train_model:2223 - 🗑️  Removed old checkpoint: checkpoints_kimi_translation/step5000_e3_s5000.pt
+2025-11-08 12:15:00.073 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 900 global_step 5050 Loss 0.4349 Accuracy 0.4549 GradNorm 3.6321 LR 1.99e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:15:53.057 | WARNING  | __main__:train_step:2071 - Large gradient norm detected: 14.8502
+2025-11-08 12:15:53.061 | WARNING  | __main__:train_step:2075 - Applied additional gradient clipping to 0.1
+2025-11-08 12:16:39.340 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 1000 global_step 5150 Loss 0.4463 Accuracy 0.4408 GradNorm 0.1681 LR 1.99e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:18:14.560 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 1100 global_step 5250 Loss 0.4556 Accuracy 0.4296 GradNorm 0.1011 LR 1.99e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:19:49.055 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 1200 global_step 5350 Loss 0.4633 Accuracy 0.4191 GradNorm 0.1384 LR 1.98e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:21:20.558 | INFO     | __main__:train_model:2196 - Epoch 4 Batch 1300 global_step 5450 Loss 0.4702 Accuracy 0.4083 GradNorm 0.0822 LR 1.98e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:22:37.144 | INFO     | __main__:train_model:2230 - Epoch 4 Loss 0.4749 Accuracy 0.4006
+2025-11-08 12:22:37.144 | INFO     | __main__:train_model:2231 - Time taken for 1 epoch: 1316.89 secs
+
+2025-11-08 12:23:48.039 | INFO     | __main__:train_model:2240 - Validation - Epoch 4 Loss: 0.5830, Accuracy: 0.2527
+
+2025-11-08 12:23:56.430 | INFO     | __main__:train_model:2271 - ⚠️  Validation loss没有改善 (1/5)
+2025-11-08 12:23:57.403 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 0 global_step 5533 Loss 0.6001 Accuracy 0.2729 GradNorm 0.2380 LR 1.98e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:25:36.279 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 100 global_step 5633 Loss 0.5632 Accuracy 0.2564 GradNorm 0.1084 LR 1.98e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:27:13.151 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 200 global_step 5733 Loss 0.5755 Accuracy 0.2495 GradNorm 0.1515 LR 1.97e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:28:52.913 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 300 global_step 5833 Loss 0.5748 Accuracy 0.2558 GradNorm 0.1510 LR 1.97e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:30:34.269 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 400 global_step 5933 Loss 0.5773 Accuracy 0.2585 GradNorm 0.1726 LR 1.97e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:31:46.640 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 6000: checkpoints_kimi_translation/step6000_e4_s6000.pt
+2025-11-08 12:31:47.158 | INFO     | __main__:train_model:2223 - 🗑️  Removed old checkpoint: checkpoints_kimi_translation/step6000_e4_s6000.pt
+2025-11-08 12:32:20.532 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 500 global_step 6033 Loss 0.5837 Accuracy 0.2567 GradNorm 0.0985 LR 1.96e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:33:45.186 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 600 global_step 6133 Loss 0.5870 Accuracy 0.2556 GradNorm 0.1296 LR 1.96e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:35:20.509 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 700 global_step 6233 Loss 0.5897 Accuracy 0.2549 GradNorm 0.1378 LR 1.96e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:36:48.884 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 800 global_step 6333 Loss 0.5957 Accuracy 0.2507 GradNorm 0.1125 LR 1.95e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:38:28.560 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 900 global_step 6433 Loss 0.6005 Accuracy 0.2476 GradNorm 0.1108 LR 1.95e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:39:55.409 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 1000 global_step 6533 Loss 0.6056 Accuracy 0.2450 GradNorm 0.1137 LR 1.94e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:41:35.145 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 1100 global_step 6633 Loss 0.6111 Accuracy 0.2429 GradNorm 0.1523 LR 1.94e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:43:13.717 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 1200 global_step 6733 Loss 0.6152 Accuracy 0.2412 GradNorm 0.1251 LR 1.93e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:44:52.125 | INFO     | __main__:train_model:2196 - Epoch 5 Batch 1300 global_step 6833 Loss 0.6201 Accuracy 0.2389 GradNorm 0.5755 LR 1.93e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:46:16.119 | INFO     | __main__:train_model:2230 - Epoch 5 Loss 0.6227 Accuracy 0.2366
+2025-11-08 12:46:16.119 | INFO     | __main__:train_model:2231 - Time taken for 1 epoch: 1339.69 secs
+
+2025-11-08 12:47:23.378 | INFO     | __main__:train_model:2240 - Validation - Epoch 5 Loss: 0.6386, Accuracy: 0.2032
+
+2025-11-08 12:47:31.596 | INFO     | __main__:train_model:2271 - ⚠️  Validation loss没有改善 (2/5)
+2025-11-08 12:47:33.153 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 0 global_step 6916 Loss 0.5391 Accuracy 0.1998 GradNorm 0.1417 LR 1.93e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:49:05.698 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 7000: checkpoints_kimi_translation/step7000_e5_s7000.pt
+2025-11-08 12:49:23.360 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 100 global_step 7016 Loss 0.6265 Accuracy 0.2163 GradNorm 0.1486 LR 1.92e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:51:00.581 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 200 global_step 7116 Loss 0.6348 Accuracy 0.2156 GradNorm 0.1563 LR 1.92e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:52:42.134 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 300 global_step 7216 Loss 0.6432 Accuracy 0.2151 GradNorm 0.1136 LR 1.91e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:54:20.140 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 400 global_step 7316 Loss 0.6466 Accuracy 0.2142 GradNorm 0.1426 LR 1.90e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:55:49.988 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 500 global_step 7416 Loss 0.6508 Accuracy 0.2128 GradNorm 0.1090 LR 1.90e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:57:22.056 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 600 global_step 7516 Loss 0.6523 Accuracy 0.2131 GradNorm 0.1419 LR 1.89e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 12:58:52.755 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 700 global_step 7616 Loss 0.6541 Accuracy 0.2136 GradNorm 0.1331 LR 1.89e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:00:31.934 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 800 global_step 7716 Loss 0.6558 Accuracy 0.2143 GradNorm 0.1403 LR 1.88e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:02:08.566 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 900 global_step 7816 Loss 0.6576 Accuracy 0.2150 GradNorm 0.1618 LR 1.87e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:03:43.621 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 1000 global_step 7916 Loss 0.6588 Accuracy 0.2152 GradNorm 0.1600 LR 1.87e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:05:16.759 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 8000: checkpoints_kimi_translation/step8000_e5_s8000.pt
+2025-11-08 13:05:32.911 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 1100 global_step 8016 Loss 0.6612 Accuracy 0.2154 GradNorm 0.1702 LR 1.86e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:07:10.221 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 1200 global_step 8116 Loss 0.6634 Accuracy 0.2157 GradNorm 0.1475 LR 1.85e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:08:44.922 | INFO     | __main__:train_model:2196 - Epoch 6 Batch 1300 global_step 8216 Loss 0.6649 Accuracy 0.2158 GradNorm 0.1586 LR 1.85e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:10:04.103 | INFO     | __main__:train_model:2230 - Epoch 6 Loss 0.6665 Accuracy 0.2159
+2025-11-08 13:10:04.103 | INFO     | __main__:train_model:2231 - Time taken for 1 epoch: 1352.51 secs
+
+2025-11-08 13:11:13.072 | INFO     | __main__:train_model:2240 - Validation - Epoch 6 Loss: 0.6954, Accuracy: 0.2155
+
+2025-11-08 13:11:21.979 | INFO     | __main__:train_model:2271 - ⚠️  Validation loss没有改善 (3/5)
+2025-11-08 13:11:23.149 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 0 global_step 8299 Loss 0.6562 Accuracy 0.2230 GradNorm 0.1532 LR 1.84e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:12:56.961 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 100 global_step 8399 Loss 0.6985 Accuracy 0.2159 GradNorm 0.1523 LR 1.83e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:14:29.734 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 200 global_step 8499 Loss 0.6960 Accuracy 0.2166 GradNorm 0.1213 LR 1.83e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:16:05.960 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 300 global_step 8599 Loss 0.6958 Accuracy 0.2142 GradNorm 0.1625 LR 1.82e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:17:45.596 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 400 global_step 8699 Loss 0.6939 Accuracy 0.2130 GradNorm 0.1643 LR 1.81e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:19:21.497 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 500 global_step 8799 Loss 0.6911 Accuracy 0.2133 GradNorm 0.1669 LR 1.80e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:21:01.601 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 600 global_step 8899 Loss 0.6895 Accuracy 0.2145 GradNorm 0.1481 LR 1.80e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:22:32.997 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 700 global_step 8999 Loss 0.6891 Accuracy 0.2153 GradNorm 0.1675 LR 1.79e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:22:42.060 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 9000: checkpoints_kimi_translation/step9000_e6_s9000.pt
+2025-11-08 13:24:14.284 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 800 global_step 9099 Loss 0.6893 Accuracy 0.2159 GradNorm 0.1594 LR 1.78e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:25:55.070 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 900 global_step 9199 Loss 0.6887 Accuracy 0.2165 GradNorm 0.1669 LR 1.77e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:27:34.471 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 1000 global_step 9299 Loss 0.6900 Accuracy 0.2170 GradNorm 0.1835 LR 1.76e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:29:07.274 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 1100 global_step 9399 Loss 0.6896 Accuracy 0.2176 GradNorm 0.1838 LR 1.75e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:30:38.391 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 1200 global_step 9499 Loss 0.6914 Accuracy 0.2182 GradNorm 0.1769 LR 1.75e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:32:11.198 | INFO     | __main__:train_model:2196 - Epoch 7 Batch 1300 global_step 9599 Loss 0.6918 Accuracy 0.2187 GradNorm 0.1879 LR 1.74e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:33:30.591 | INFO     | __main__:train_model:2230 - Epoch 7 Loss 0.6925 Accuracy 0.2191
+2025-11-08 13:33:30.592 | INFO     | __main__:train_model:2231 - Time taken for 1 epoch: 1328.60 secs
+
+2025-11-08 13:34:40.681 | INFO     | __main__:train_model:2240 - Validation - Epoch 7 Loss: 0.7085, Accuracy: 0.2233
+
+2025-11-08 13:34:48.928 | INFO     | __main__:train_model:2271 - ⚠️  Validation loss没有改善 (4/5)
+2025-11-08 13:34:50.136 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 0 global_step 9682 Loss 0.7393 Accuracy 0.2252 GradNorm 0.2733 LR 1.73e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:36:30.502 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 100 global_step 9782 Loss 0.6828 Accuracy 0.2228 GradNorm 0.2085 LR 1.72e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:38:07.600 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 200 global_step 9882 Loss 0.6920 Accuracy 0.2238 GradNorm 0.1331 LR 1.71e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:39:47.864 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 300 global_step 9982 Loss 0.6948 Accuracy 0.2242 GradNorm 0.2357 LR 1.70e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:40:09.739 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 10000: checkpoints_kimi_translation/step10000_e7_s10000.pt
+2025-11-08 13:40:10.087 | INFO     | __main__:train_model:2223 - 🗑️  Removed old checkpoint: checkpoints_kimi_translation/step10000_e7_s10000.pt
+2025-11-08 13:41:34.537 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 400 global_step 10082 Loss 0.6960 Accuracy 0.2247 GradNorm 0.1743 LR 1.69e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:43:11.520 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 500 global_step 10182 Loss 0.6993 Accuracy 0.2249 GradNorm 0.1603 LR 1.68e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:44:51.218 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 600 global_step 10282 Loss 0.7034 Accuracy 0.2248 GradNorm 0.1510 LR 1.67e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:46:19.974 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 700 global_step 10382 Loss 0.7064 Accuracy 0.2250 GradNorm 0.1786 LR 1.66e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:47:52.008 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 800 global_step 10482 Loss 0.7098 Accuracy 0.2252 GradNorm 0.1754 LR 1.65e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:49:13.399 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 900 global_step 10582 Loss 0.7119 Accuracy 0.2252 GradNorm 0.3987 LR 1.64e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:50:45.656 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 1000 global_step 10682 Loss 0.7133 Accuracy 0.2256 GradNorm 0.1989 LR 1.63e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:52:26.343 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 1100 global_step 10782 Loss 0.7144 Accuracy 0.2259 GradNorm 0.1774 LR 1.62e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:54:03.968 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 1200 global_step 10882 Loss 0.7168 Accuracy 0.2264 GradNorm 0.2370 LR 1.61e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:55:45.784 | INFO     | __main__:train_model:2196 - Epoch 8 Batch 1300 global_step 10982 Loss 0.7163 Accuracy 0.2265 GradNorm 0.2497 LR 1.60e-04 GPU0内存: 3.25GB/10.07GB
+2025-11-08 13:56:12.552 | INFO     | __main__:train_model:2215 - 💾 Checkpoint saved at step 11000: checkpoints_kimi_translation/step11000_e7_s11000.pt
+2025-11-08 13:56:12.878 | INFO     | __main__:train_model:2223 - 🗑️  Removed old checkpoint: checkpoints_kimi_translation/step11000_e7_s11000.pt
+2025-11-08 13:57:16.335 | INFO     | __main__:train_model:2230 - Epoch 8 Loss 0.7172 Accuracy 0.2268
+2025-11-08 13:57:16.335 | INFO     | __main__:train_model:2231 - Time taken for 1 epoch: 1347.41 secs
+
+2025-11-08 13:58:27.316 | INFO     | __main__:train_model:2240 - Validation - Epoch 8 Loss: 0.7465, Accuracy: 0.2295
+
+2025-11-08 13:58:35.982 | INFO     | __main__:train_model:2271 - ⚠️  Validation loss没有改善 (5/5)
+2025-11-08 13:58:35.982 | INFO     | __main__:train_model:2275 - 🛑 Early stopping触发！连续5个epoch验证loss未改善
+2025-11-08 13:58:35.982 | INFO     | __main__:train_model:2276 - 💾 最佳验证loss: 0.1537
+2025-11-08 13:58:35.982 | INFO     | __main__:train_model:2310 - TensorBoard logging completed. Use 'tensorboard --logdir=runs' to view the logs.
+🚨 Config not found for kimi. You can manually add it to HARDCODED_CONFIG_FOR_MODELS in utils/auto_docstring.py
+🚨 `debug_mode` is part of KimiLinearModel.forward's signature, but not documented. Make sure to add it to the docstring of the function in /workspace/core/models/kimi_linear/modeling_kimi.py.
+🚨 Config not found for kimi. You can manually add it to HARDCODED_CONFIG_FOR_MODELS in utils/auto_docstring.py
+🚨 `generation_mode` is part of KimiLinearForCausalLM.forward's signature, but not documented. Make sure to add it to the docstring of the function in /workspace/core/models/kimi_linear/modeling_kimi.py.
+🚨 `debug_mode` is part of KimiLinearForCausalLM.forward's signature, but not documented. Make sure to add it to the docstring of the function in /workspace/core/models/kimi_linear/modeling_kimi.py.
