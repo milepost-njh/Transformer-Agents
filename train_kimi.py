@@ -476,9 +476,10 @@ def build_translation_dataloaders(
             pt_text = ex["pt"]  # 统一使用 "pt"（已在加载时强制重命名）
             en_text = ex["en"]
             
-            # 构建prompt格式
-            # 示例: "Translate Portuguese to English:\n{Eu dei um livro ao menino.}\nEnglish: "
-            prompt = f"Translate Portuguese to English:\n{pt_text}\nEnglish: "
+            # 构建prompt格式（优化：简化格式，减少无用token，提高有效训练比例）
+            # 从 "Translate Portuguese to English:\n{text}\nEnglish: " 
+            # 简化为 "{text} = " （极简格式，更高效）
+            prompt = f"{pt_text} = "
             
             # 分别编码各部分（不添加特殊token，稍后手动添加BOS/EOS）
             prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
@@ -2126,7 +2127,8 @@ def train_model(
     train_acc_meter = AverageMeter("train_accuracy")
     global_step = 0
     best_val_loss = float('inf')  # 追踪最佳验证集loss
-    patience = 5  # Early stopping: 如果5个epoch验证loss不下降就停止
+    # ⬇️ 优化：禁用Early stopping，让模型充分训练完整个epochs
+    patience = 999  # 设置为极大值，实际禁用early stopping
     patience_counter = 0  # 计数器
 
     for epoch in range(epochs):
@@ -2270,11 +2272,12 @@ def train_model(
                 patience_counter += 1
                 logger.info(f"⚠️  Validation loss没有改善 ({patience_counter}/{patience})")
                 
-                # Early stopping检查
-                if patience_counter >= patience:
-                    logger.info(f"🛑 Early stopping触发！连续{patience}个epoch验证loss未改善")
-                    logger.info(f"💾 最佳验证loss: {best_val_loss:.4f}")
-                    break
+                # ⬇️ 优化：禁用Early stopping（已通过patience=999实现）
+                # 保留代码结构以便后续需要时恢复
+                # if patience_counter >= patience:
+                #     logger.info(f"🛑 Early stopping触发！连续{patience}个epoch验证loss未改善")
+                #     logger.info(f"💾 最佳验证loss: {best_val_loss:.4f}")
+                #     break
 
         except Exception as e:
             import traceback
@@ -2622,20 +2625,20 @@ if __name__ == "__main__":
 
     # ======== 模型训练超参数（与train_moe_mla_parallel.py保持一致）========
     batch_size = 128  # 增大batch_size充分利用GPU（5卡 × 25.6/卡）
-    warmup_steps = 4000  # 与参考脚本保持一致
+    warmup_ratio = 0.05  # ⬇️ 优化：降低warmup比例到5%（Decoder-only模型需要更少warmup）
     epochs = 20  # 与参考脚本保持一致（原15改为20）
-    learning_rate = 5e-5  # 🔧 修复：进一步降低到5e-5，更保守更稳定，避免训练后期崩溃
+    learning_rate = 1e-4  # ⬆️ 优化：提高学习率加速收敛，与传统模型一致
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
-    label_smoothing = 0.0  # 翻译任务通常不用label_smoothing
+    label_smoothing = 0.1  # ⬆️ 优化：添加label smoothing防止过拟合，提高泛化能力
 
     # ======== 模型结构（与train_moe_mla_parallel.py保持一致）========
     num_layers = 8  # 与参考脚本保持一致
     d_model = 512  # 与参考脚本保持一致
     dff = 2048  # 与参考脚本保持一致
     num_heads = 8  # 与参考脚本保持一致
-    dropout_rate = 0.1  # 与参考脚本保持一致
+    dropout_rate = 0.15  # ⬆️ 优化：增加dropout防止过拟合（从0.1提高到0.15）
     
     # # KV Cache 计算相关参数
     # head_dim = d_model // num_heads  # 每个Head的向量维度 = 512/8 = 64 (对应Qwen-72B的128)
@@ -3071,8 +3074,8 @@ if __name__ == "__main__":
         **adamw_kwargs
     )
 
-    # 使用与参考脚本一致的固定warmup steps（不要动态计算！）
-    # warmup_steps已在超参数部分设置为4000
+    # ⬇️ 优化：使用动态warmup计算（5%）而非固定4000步
+    warmup_steps = int(warmup_ratio * num_training_steps)
     logger.info(f"📊 训练步数统计:")
     logger.info(f"   - 总训练步数: {num_training_steps}")
     logger.info(f"   - Warmup步数: {warmup_steps} ({warmup_steps/num_training_steps*100:.1f}%)")
@@ -3080,7 +3083,7 @@ if __name__ == "__main__":
     # 获取学习率调度器
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
-        num_warmup_steps=warmup_steps,  # 使用固定的4000步
+        num_warmup_steps=warmup_steps,  # 动态计算的warmup步数
         num_training_steps=num_training_steps,
         num_cycles=0.5,
     )
