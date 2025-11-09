@@ -15,11 +15,22 @@
 
 ```
 inference/
-├── inference.py      # 主推理脚本
-├── evaluate.py       # 模型评估脚本
-├── config.py         # 配置文件
-└── README.md         # 说明文档
+├── inference_kimi.py         # Kimi模型推理脚本（主要推理脚本）
+├── compare_kv_cache_mla.py   # KV cache和MLA对比工具
+├── memory_analysis.py        # 内存分析工具
+└── README.md                 # 说明文档
 ```
+
+### Kimi 模型推理
+
+使用 `inference_kimi.py` 进行推理，它完全模拟训练时的编码方式，确保推理结果正确。
+
+```bash
+# 使用GPU 1运行Kimi推理
+CUDA_VISIBLE_DEVICES=1 python inference/inference_kimi.py
+```
+
+**注意**：诊断和测试代码已移至 `test/kimi_diagnostics/` 文件夹。
 
 ## 安装依赖
 
