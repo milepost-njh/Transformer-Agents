@@ -2627,11 +2627,11 @@ if __name__ == "__main__":
     batch_size = 128  # 增大batch_size充分利用GPU（5卡 × 25.6/卡）
     warmup_ratio = 0.05  # ⬇️ 优化：降低warmup比例到5%（Decoder-only模型需要更少warmup）
     epochs = 20  # 与参考脚本保持一致（原15改为20）
-    learning_rate = 1e-4  # ⬆️ 优化：提高学习率加速收敛，与传统模型一致
+    learning_rate = 8e-5  # ⬆️ 优化：适度提高学习率（折中方案，避免1e-4太激进导致不稳定）
     betas = (0.9, 0.999)
     eps = 1e-8
     weight_decay = 0.01
-    label_smoothing = 0.1  # ⬆️ 优化：添加label smoothing防止过拟合，提高泛化能力
+    label_smoothing = 0.0  # 🔧 临时禁用：label smoothing + ignore_index=-100 会导致loss=inf，需要修复
 
     # ======== 模型结构（与train_moe_mla_parallel.py保持一致）========
     num_layers = 8  # 与参考脚本保持一致
