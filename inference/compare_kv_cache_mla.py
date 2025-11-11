@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 真正的MLA vs 标准注意力 KV-cache 效率对比脚本
-实现真正的KV-cache机制，测试自回归生成中的内存使用和性能
+实现真正的KV-cache机制，测试自回归生成中的显存使用和性能
 
 使用方法:
 CUDA_VISIBLE_DEVICES=1 python inference/compare_kv_cache_mla.py \
@@ -45,7 +45,7 @@ def get_gpu_memory():
     return 0
 
 
-def clear_memory():
+def clear_gpu_memory():
     """清理GPU显存"""
     gc.collect()
     if torch.cuda.is_available():
@@ -180,14 +180,14 @@ class KVCacheInferenceEngine:
         )
     
     def generate_with_kv_cache(self, input_text: str, max_new_tokens: int = 64, 
-                              use_real_cache: bool = True, verbose_tokens: bool = False) -> Dict:
+                              use_kv_cache: bool = True, verbose_tokens: bool = False) -> Dict:
         """
         使用KV-cache进行自回归生成
         
         Args:
             input_text: 输入文本
             max_new_tokens: 最大生成token数
-            use_real_cache: 是否使用真正的KV-cache（True）还是模拟cache（False）
+            use_kv_cache: 是否使用KV-cache优化（True=启用KV-cache | False=传统方法，每步重算）
             verbose_tokens: 是否详细打印每个生成的token
         """
         start_time = time.time()
@@ -206,9 +206,9 @@ class KVCacheInferenceEngine:
         step_times = []
         
         with torch.no_grad():
-            if use_real_cache:
-                # ====== 真正的KV-cache实现 ======
-                logger.info(f"  [真正Cache] 开始生成（Prefill + Decode两阶段）")
+            if use_kv_cache:
+                # ====== 启用KV-cache优化 ======
+                logger.info(f"  [KV-Cache模式] 开始生成（Prefill + Decode两阶段）")
                 
                 # Prefill阶段：运行encoder一次，生成encoder cache
                 enc_pad_mask, _, _ = create_masks(
@@ -321,8 +321,8 @@ class KVCacheInferenceEngine:
                     
                     decoder_input = torch.cat([decoder_input, next_token_id.unsqueeze(0)], dim=-1)
             else:
-                # ====== 模拟KV-cache（旧实现，用于对比） ======
-                logger.info(f"  [模拟Cache] 开始生成（每步重算整个序列）")
+                # ====== 不使用KV-cache（传统方法，用于对比） ======
+                logger.info(f"  [无Cache模式] 开始生成（每步重算整个序列，O(n²)计算量）")
                 for step in range(max_new_tokens):
                     step_start = time.time()
                     
@@ -501,7 +501,7 @@ def load_model_and_tokenizers(checkpoint_path: str, use_mla: bool, device: str):
 
 
 def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str, 
-                   max_new_tokens: int, device: str, use_real_cache: bool = True,
+                   max_new_tokens: int, device: str, use_kv_cache: bool = True,
                    verbose_tokens: bool = False) -> Dict:
     """
     对单个模型进行基准测试
@@ -512,23 +512,23 @@ def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str,
         test_input: 测试输入文本
         max_new_tokens: 最大生成token数
         device: 设备
-        use_real_cache: 是否使用真正的KV-cache（False=模拟cache）
+        use_kv_cache: 是否使用KV-cache优化（True=启用 | False=传统方法）
     """
-    cache_type = "真实KV-cache" if use_real_cache else "模拟KV-cache"
+    cache_type = "KV-Cache模式" if use_kv_cache else "无Cache模式"
     model_name = "MLA" if use_mla else "Standard"
     logger.info(f"\n{'='*60}")
     logger.info(f"测试 {model_name} 模型 ({cache_type}, 生成 {max_new_tokens} tokens)")
     logger.info(f"{'='*60}")
     
-    # 清理内存
-    clear_memory()
+    # 清理GPU显存
+    clear_gpu_memory()
     
     # 加载模型
     model, pt_tokenizer, en_tokenizer, config = load_model_and_tokenizers(
         checkpoint_path, use_mla, device
     )
     
-    logger.info(f"模型加载完成，GPU内存: {get_gpu_memory():.1f} MB")
+    logger.info(f"模型加载完成，GPU显存: {get_gpu_memory():.1f} MB")
     
     # 创建推理引擎
     engine = KVCacheInferenceEngine(
@@ -539,7 +539,7 @@ def benchmark_model(checkpoint_path: str, use_mla: bool, test_input: str,
     logger.success(f"📥 输入句子: {test_input}")
     
     # 执行生成
-    result = engine.generate_with_kv_cache(test_input, max_new_tokens, use_real_cache=use_real_cache, verbose_tokens=verbose_tokens)
+    result = engine.generate_with_kv_cache(test_input, max_new_tokens, use_kv_cache=use_kv_cache, verbose_tokens=verbose_tokens)
     
     # 打印输出句子
     logger.success(f"📤 输出句子: {result['output']}")
@@ -612,7 +612,7 @@ def main():
     if test_both_models:
         logger.info(f"\n🚀 模式：MLA vs Standard 对比")
     else:
-        logger.info(f"\n🚀 模式：真正KV-cache vs 模拟KV-cache 对比")
+        logger.info(f"\n🚀 模式：启用KV-cache vs 不用KV-cache 对比")
     
     logger.info(f"{'='*60}")
     
@@ -631,8 +631,8 @@ def main():
             )
             all_results.append(mla_result)
             
-            # 清理内存
-            clear_memory()
+            # 清理GPU显存
+            clear_gpu_memory()
             time.sleep(1)
             
             # 测试标准模型
@@ -645,45 +645,45 @@ def main():
             # 对比结果
             compare_results(mla_result, standard_result)
             
-            # 清理内存
-            clear_memory()
+            # 清理GPU显存
+            clear_gpu_memory()
             time.sleep(1)
         else:
-            # 只有一个模型：对比真正cache vs 模拟cache
-            logger.info("\n[1/2] 测试真正的KV-cache")
-            real_cache_result = benchmark_model(
+            # 只有一个模型：对比启用KV-cache vs 不用KV-cache
+            logger.info("\n[1/2] 测试启用KV-cache")
+            with_cache_result = benchmark_model(
                 args.mla_checkpoint, True, args.test_input, max_new_tokens, device, 
-                use_real_cache=True, verbose_tokens=args.verbose_tokens
+                use_kv_cache=True, verbose_tokens=args.verbose_tokens
             )
-            all_results.append(real_cache_result)
+            all_results.append(with_cache_result)
             
-            # 清理内存
-            clear_memory()
+            # 清理GPU显存
+            clear_gpu_memory()
             time.sleep(1)
             
-            logger.info("\n[2/2] 测试模拟KV-cache（每步重算）")
-            simulated_cache_result = benchmark_model(
+            logger.info("\n[2/2] 测试不使用KV-cache（传统方法，每步重算）")
+            without_cache_result = benchmark_model(
                 args.mla_checkpoint, True, args.test_input, max_new_tokens, device, 
-                use_real_cache=False, verbose_tokens=args.verbose_tokens
+                use_kv_cache=False, verbose_tokens=args.verbose_tokens
             )
-            all_results.append(simulated_cache_result)
+            all_results.append(without_cache_result)
             
-            # 对比真正cache vs 模拟cache
+            # 对比启用cache vs 不用cache
             logger.info(f"\n{'='*60}")
-            logger.info("📊 真正Cache vs 不用Cache 对比结果")
+            logger.info("📊 启用KV-cache vs 不用KV-cache 对比结果")
             logger.info(f"{'='*60}")
             
-            speedup = simulated_cache_result['generation_time'] / real_cache_result['generation_time']
+            speedup = without_cache_result['generation_time'] / with_cache_result['generation_time']
             
             logger.info(f"\n🔍 关键区别：")
-            logger.info(f"  真正Cache: Encoder运行1次 | Decoder每步输入1个token | 复用历史K/V")
-            logger.info(f"  不用Cache: Encoder每步运行 | Decoder每步输入完整序列 | 重新计算所有K/V")
+            logger.info(f"  ✅ 启用Cache: Encoder运行1次 | Decoder每步输入1个token | 复用历史K/V")
+            logger.info(f"  ❌ 不用Cache: Encoder每步运行 | Decoder每步输入完整序列 | 重新计算所有K/V")
             logger.info(f"\n📈 性能对比：")
             logger.info(f"  ⚡ 加速比: {speedup:.2f}x")
-            logger.info(f"  💾 KV-cache显存: {real_cache_result['max_kv_cache_size']:.2f} MB")
-            logger.info(f"  ⏱️  真正Cache: {real_cache_result['generation_time']:.3f}s")
-            logger.info(f"  🐌 不用Cache: {simulated_cache_result['generation_time']:.3f}s")
-            logger.info(f"\n✅ 真正的KV-cache通过缓存历史K/V，避免重复计算，实现 {speedup:.2f}倍加速！")
+            logger.info(f"  💾 KV-cache显存: {with_cache_result['max_kv_cache_size']:.2f} MB")
+            logger.info(f"  ⏱️  启用Cache: {with_cache_result['generation_time']:.3f}s")
+            logger.info(f"  🐌 不用Cache: {without_cache_result['generation_time']:.3f}s")
+            logger.info(f"\n✅ KV-cache通过缓存历史K/V，避免重复计算，实现 {speedup:.2f}倍加速！")
             logger.info(f"   计算量: O(n) vs O(n²)  其中n={max_new_tokens}")
             
             # 对比生成的token差异
@@ -691,42 +691,42 @@ def main():
             logger.info("🔤 Token输出对比")
             logger.info(f"{'='*60}")
             
-            real_tokens = real_cache_result.get('generated_tokens', [])
-            sim_tokens = simulated_cache_result.get('generated_tokens', [])
-            real_texts = real_cache_result.get('generated_texts', [])
-            sim_texts = simulated_cache_result.get('generated_texts', [])
+            with_cache_tokens = with_cache_result.get('generated_tokens', [])
+            without_cache_tokens = without_cache_result.get('generated_tokens', [])
+            with_cache_texts = with_cache_result.get('generated_texts', [])
+            without_cache_texts = without_cache_result.get('generated_texts', [])
             
             # 检查输出是否一致
-            if real_tokens == sim_tokens:
+            if with_cache_tokens == without_cache_tokens:
                 logger.info("✅ 两种方法生成的token序列完全一致！")
-                logger.info(f"📝 最终输出: {real_cache_result['output']}")
+                logger.info(f"📝 最终输出: {with_cache_result['output']}")
             else:
                 logger.warning("⚠️ 两种方法生成的token序列存在差异！")
-                logger.info(f"\n真正Cache输出 ({len(real_tokens)} tokens): {real_cache_result['output']}")
-                logger.info(f"模拟Cache输出 ({len(sim_tokens)} tokens): {simulated_cache_result['output']}")
+                logger.info(f"\n启用Cache输出 ({len(with_cache_tokens)} tokens): {with_cache_result['output']}")
+                logger.info(f"不用Cache输出 ({len(without_cache_tokens)} tokens): {without_cache_result['output']}")
                 
                 # 详细对比差异
                 logger.info(f"\n逐token对比：")
-                max_len = max(len(real_tokens), len(sim_tokens))
+                max_len = max(len(with_cache_tokens), len(without_cache_tokens))
                 diff_count = 0
                 for i in range(max_len):
-                    real_token = real_tokens[i] if i < len(real_tokens) else None
-                    sim_token = sim_tokens[i] if i < len(sim_tokens) else None
-                    real_text = real_texts[i] if i < len(real_texts) else ""
-                    sim_text = sim_texts[i] if i < len(sim_texts) else ""
+                    with_token = with_cache_tokens[i] if i < len(with_cache_tokens) else None
+                    without_token = without_cache_tokens[i] if i < len(without_cache_tokens) else None
+                    with_text = with_cache_texts[i] if i < len(with_cache_texts) else ""
+                    without_text = without_cache_texts[i] if i < len(without_cache_texts) else ""
                     
-                    if real_token != sim_token:
+                    if with_token != without_token:
                         diff_count += 1
                         status = "❌"
                     else:
                         status = "✅"
                     
-                    logger.info(f"  {status} Token {i+1}: 真实={real_token}('{real_text}') | 模拟={sim_token}('{sim_text}')")
+                    logger.info(f"  {status} Token {i+1}: 启用Cache={with_token}('{with_text}') | 不用Cache={without_token}('{without_text}')")
                 
                 logger.info(f"\n差异统计: {diff_count}/{max_len} tokens不同")
             
-            # 清理内存
-            clear_memory()
+            # 清理GPU显存
+            clear_gpu_memory()
             time.sleep(1)
     
     # 保存结果
