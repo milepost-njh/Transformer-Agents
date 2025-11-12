@@ -211,7 +211,7 @@ def main():
     # 配置
     tokenizer_dir = "tok_en"
     tokenizer_file = os.path.join(tokenizer_dir, "tokenizer.json")
-    checkpoint_path = "/workspace/checkpoints_kimi_translation/best_e11_s15213.pt"
+    checkpoint_path = "/workspace/checkpoints_kimi_251109/best_e7_s9681.pt"
     
     # 设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
