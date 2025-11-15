@@ -2013,7 +2013,8 @@ if __name__ == "__main__":
     max_length = 64  # 最大序列长度
 
     # 模型训练超参数
-    batch_size = 64  # 批处理数 (增大以充分利用46GB显存)
+    batch_size = 128  # 批处理数 (充分利用46GB显存，提升GPU利用率)
+    gradient_accumulation_steps = 1  # 梯度累积步数（1=不累积，2/4=模拟2倍/4倍batch）
     warmup_steps = 4000  # warmup steps数
     epochs = 20  # 训练轮数
     # learning_rate = 1.0           # 学习率
