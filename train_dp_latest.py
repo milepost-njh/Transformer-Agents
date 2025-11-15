@@ -520,8 +520,10 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 
     # 加上 mask
     if mask is not None:
-        # 在 mask==1 的位置加上 -1e9，使 softmax 后趋近于0
-        scaled_attention_logits = scaled_attention_logits.masked_fill(mask == 1, -1e9)
+        # 在 mask==1 的位置加上极小值，使 softmax 后趋近于0
+        # 使用 -1e4 而不是 -1e9，避免 bfloat16 溢出
+        mask_value = -1e4 if q.dtype in [torch.float16, torch.bfloat16] else -1e9
+        scaled_attention_logits = scaled_attention_logits.masked_fill(mask == 1, mask_value)
 
     # softmax 得到注意力权重
     attention_weights = F.softmax(scaled_attention_logits, dim=-1)
