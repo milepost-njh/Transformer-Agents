@@ -4,7 +4,6 @@ import os
 import sys
 import time
 import math
-import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -1911,16 +1910,9 @@ def load_ckpt(model, optimizer=None, scheduler=None, ckpt_dir="checkpoints", dev
 
 
 if __name__ == "__main__":
-    # 解析命令行参数
-    parser = argparse.ArgumentParser(description="Transformer Training Script")
-    parser.add_argument("--no_mla", action="store_true", 
-                       help="Disable MLA (default: MLA enabled)")
-    
-    args = parser.parse_args()
-    
-    # 处理参数逻辑
-    use_mla = not args.no_mla  # 默认启用MLA，除非指定--no_mla
-    use_mtp = True  # MTP固定启用
+    # 训练配置（直接在代码中配置）
+    use_mla = True   # Multi-head Latent Attention
+    use_mtp = True   # Multi-Token Prediction
     
     logger.info(f"🚀 Training Configuration:")
     logger.info(f"   - MLA (Multi-head Latent Attention): {use_mla}")
