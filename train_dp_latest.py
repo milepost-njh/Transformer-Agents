@@ -2169,10 +2169,11 @@ if __name__ == "__main__":
     # 用 DataParallel 包装模型
     model, _device = backend.wrap_model(model)
     
-    # torch.compile 优化（PyTorch 2.0+）- 可提升10-40%速度
+    # torch.compile 优化（PyTorch 2.0+）- 可额外提升10-20%速度
+    # 首次编译有约30秒开销，但对长时间训练可忽略
     if hasattr(torch, 'compile'):
         try:
-            logger.info("🚀 启用 torch.compile 优化...")
+            logger.info("🚀 启用 torch.compile 优化（首次编译需30秒）...")
             model = torch.compile(model, mode="reduce-overhead")
             logger.info("✅ torch.compile 优化已启用")
         except Exception as e:
