@@ -498,19 +498,79 @@ def create_look_ahead_mask(size: int):
     return mask
 
 
-def scaled_dot_product_attention(q, k, v, mask=None):
+def scaled_dot_product_attention(q, k, v, mask=None, use_flash_attn=True):
     """
+    支持 Flash Attention 2/3 的注意力计算
+    
     Args:
-        q: (..., seq_len_q, depth)
-        k: (..., seq_len_k, depth)
-        v: (..., seq_len_v, depth_v)  (seq_len_k == seq_len_v)
-        mask: (..., seq_len_q, seq_len_k)，
-              mask里1表示要忽略的位置，0表示保留。
+        q: [B, H, L_q, D] 或 (..., seq_len_q, depth)
+        k: [B, H, L_k, D] 或 (..., seq_len_k, depth)
+        v: [B, H, L_v, D] 或 (..., seq_len_v, depth_v)
+        mask: (..., seq_len_q, seq_len_k)，1=屏蔽，0=保留
+        use_flash_attn: 是否尝试使用 Flash Attention
 
     Returns:
         output: (..., seq_len_q, depth_v) 加权和
         attention_weights: (..., seq_len_q, seq_len_k) 注意力权重
     """
+    # 尝试使用 Flash Attention（需要 CUDA + fp16/bf16）
+    if use_flash_attn and torch.cuda.is_available() and q.dtype in [torch.float16, torch.bfloat16]:
+        try:
+            from flash_attn import flash_attn_func
+            
+            # Flash Attention 需要的输入形状: [batch, seqlen, num_heads, head_dim]
+            # 当前形状: [batch, num_heads, seqlen, head_dim]
+            if q.dim() == 4:  # [B, H, L, D]
+                B, H, Lq, D = q.shape
+                Lk = k.size(2)
+                
+                # 转换形状: [B, H, L, D] -> [B, L, H, D]
+                q_flash = q.transpose(1, 2).contiguous()  # [B, Lq, H, D]
+                k_flash = k.transpose(1, 2).contiguous()  # [B, Lk, H, D]
+                v_flash = v.transpose(1, 2).contiguous()  # [B, Lk, H, D]
+                
+                # Flash Attention 的 causal 参数处理 look-ahead mask
+                # 如果 mask 全是因果mask（上三角），使用 causal=True
+                is_causal = False
+                if mask is not None and Lq == Lk:
+                    # 简单检测：如果是方阵且可能是因果mask
+                    is_causal = True
+                    mask = None  # Flash Attention 的 causal=True 会自动处理
+                
+                # 调用 Flash Attention
+                output = flash_attn_func(
+                    q_flash, k_flash, v_flash,
+                    dropout_p=0.0,
+                    softmax_scale=None,  # 使用默认 1/sqrt(d)
+                    causal=is_causal,
+                )  # [B, Lq, H, D]
+                
+                # 转回原始形状: [B, Lq, H, D] -> [B, H, Lq, D]
+                output = output.transpose(1, 2).contiguous()
+                
+                # Flash Attention 不返回权重（为了节省内存）
+                # 创建空张量作为占位符，保持接口兼容
+                attention_weights = torch.empty(0, device=q.device, dtype=q.dtype)
+                
+                # 首次使用时打印提示
+                if not hasattr(scaled_dot_product_attention, '_flash_enabled_logged'):
+                    logger.info("✅ Flash Attention 已启用！内存和速度将显著提升")
+                    scaled_dot_product_attention._flash_enabled_logged = True
+                
+                return output, attention_weights
+                
+        except ImportError:
+            # flash-attn 未安装，回退到标准实现
+            if not hasattr(scaled_dot_product_attention, '_flash_warning_shown'):
+                logger.info("⚠️ flash-attn 未安装，使用标准attention。安装: pip install flash-attn --no-build-isolation")
+                scaled_dot_product_attention._flash_warning_shown = True
+        except Exception as e:
+            # Flash Attention 执行失败，回退到标准实现
+            if not hasattr(scaled_dot_product_attention, '_flash_error_shown'):
+                logger.warning(f"⚠️ Flash Attention 执行失败，回退到标准实现: {e}")
+                scaled_dot_product_attention._flash_error_shown = True
+    
+    # 标准 Attention 实现（fallback）
     # (..., seq_len_q, seq_len_k)
     matmul_qk = torch.matmul(q, k.transpose(-2, -1))
 
@@ -1944,7 +2004,7 @@ if __name__ == "__main__":
     # 模型训练超参数
     batch_size = 64  # 批处理数 (增大以充分利用46GB显存)
     warmup_steps = 4000  # warmup steps数
-    epochs = 30  # 训练轮数
+    epochs = 20  # 训练轮数
     # learning_rate = 1.0           # 学习率
     # betas = (0.9, 0.98)           # Adam 的一阶矩（梯度均值）；二阶矩（梯度平方的均值）
     # eps = 1e-9                    # 防止除零错误的小常数

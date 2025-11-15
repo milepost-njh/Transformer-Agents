@@ -16,6 +16,7 @@ modelscope>=1.28.0
 # Training and Optimization
 accelerate>=0.20.0
 datasets>=2.14.0
+flash-attn>=2.0.0  # Flash Attention 2/3 for 2-4x attention speedup
 
 # Monitoring and Logging
 tqdm>=4.67.0
