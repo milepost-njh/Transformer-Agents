@@ -5,8 +5,8 @@ set -euo pipefail
 
 mkdir -p logs
 
-# 设置要使用的 GPU
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+# 设置要使用的 GPU (使用 1、2、5、6、7 编号的卡)
+export CUDA_VISIBLE_DEVICES=1,2,5,6,7
 
 # 后台运行，日志写入文件
 LOG_FILE=logs/train_dp_$(date +%Y%m%d_%H%M%S).log
