@@ -918,8 +918,10 @@ class EncoderLayer(nn.Module):
         # 激活检查点：训练时节省显存，推理时不使用
         if self.use_checkpoint and self.training and not use_cache:
             from torch.utils.checkpoint import checkpoint
+            # 使用 lambda 包装以正确传递关键字参数
             mha_output = checkpoint(
-                self.mha, x, x, x, src_mask, past_key_value, use_cache,
+                lambda q, k, v, m: self.mha(q, k, v, mask=m, past_key_value=None, use_cache=False),
+                x, x, x, src_mask,
                 use_reentrant=False
             )
         else:
@@ -1029,8 +1031,10 @@ class DecoderLayer(nn.Module):
         # 激活检查点：训练时节省显存
         if self.use_checkpoint and self.training and not use_cache:
             from torch.utils.checkpoint import checkpoint
+            # 使用 lambda 包装以正确传递关键字参数
             mha1_output = checkpoint(
-                self.mha1, x, x, x, tgt_mask, self_attn_past_kv, use_cache,
+                lambda q, k, v, m: self.mha1(q, k, v, mask=m, past_key_value=None, use_cache=False),
+                x, x, x, tgt_mask,
                 use_reentrant=False
             )
         else:
@@ -1050,8 +1054,10 @@ class DecoderLayer(nn.Module):
         # 激活检查点：训练时节省显存
         if self.use_checkpoint and self.training:
             from torch.utils.checkpoint import checkpoint
+            # 使用 lambda 包装以正确传递关键字参数
             mha2_output = checkpoint(
-                self.mha2, out1, enc_out, enc_out, enc_dec_mask, None, False,
+                lambda q, k, v, m: self.mha2(q, k, v, mask=m, past_key_value=None, use_cache=False),
+                out1, enc_out, enc_out, enc_dec_mask,
                 use_reentrant=False
             )
         else:
