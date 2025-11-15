@@ -893,7 +893,7 @@ class EncoderLayer(nn.Module):
 
     def __init__(self, d_model: int, num_heads: int, dff: int, rate: float = 0.1, use_rope: bool = True,
                  use_moe: bool = False, moe_config=None, use_mla: bool = False,
-                 q_lora_rank: int = None, kv_lora_rank: int = None):
+                 q_lora_rank: int = None, kv_lora_rank: int = None, use_checkpoint: bool = False):
         super().__init__()
         self.mha = MultiHeadAttention(d_model, num_heads, use_rope=use_rope, use_mla=use_mla,
                                       q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)  # 支持 MLA
@@ -904,6 +904,8 @@ class EncoderLayer(nn.Module):
 
         self.dropout1 = nn.Dropout(rate)
         self.dropout2 = nn.Dropout(rate)
+        
+        self.use_checkpoint = use_checkpoint
 
     def forward(self, x: torch.Tensor, src_mask: torch.Tensor = None, 
                 past_key_value: Tuple[torch.Tensor, torch.Tensor] = None, use_cache: bool = False):
@@ -913,7 +915,15 @@ class EncoderLayer(nn.Module):
           present_key_value: 当前的KV-cache（如果use_cache=True）
         """
         # TODO: 全局自注意力 - 编码器中的自注意力，可以关注序列中的所有位置
-        mha_output = self.mha(x, x, x, mask=src_mask, past_key_value=past_key_value, use_cache=use_cache)
+        # 激活检查点：训练时节省显存，推理时不使用
+        if self.use_checkpoint and self.training and not use_cache:
+            from torch.utils.checkpoint import checkpoint
+            mha_output = checkpoint(
+                self.mha, x, x, x, src_mask, past_key_value, use_cache,
+                use_reentrant=False
+            )
+        else:
+            mha_output = self.mha(x, x, x, mask=src_mask, past_key_value=past_key_value, use_cache=use_cache)
         
         # 处理MHA的返回值
         if use_cache:
@@ -925,8 +935,13 @@ class EncoderLayer(nn.Module):
         attn_out = self.dropout1(attn_out)  # 训练模式下生效
         out1 = self.norm1(x + attn_out)  # 残差 + RMSNorm
 
-        # Feed Forward
-        ffn_out = self.ffn(out1)  # [B, L, d_model] 或 (ffn_out, router_logits) 如果使用 MoE
+        # Feed Forward - 激活检查点
+        if self.use_checkpoint and self.training and not use_cache:
+            from torch.utils.checkpoint import checkpoint
+            ffn_out = checkpoint(self.ffn, out1, use_reentrant=False)
+        else:
+            ffn_out = self.ffn(out1)
+            
         if isinstance(ffn_out, tuple):
             ffn_out, router_logits = ffn_out
         else:
@@ -960,7 +975,7 @@ class DecoderLayer(nn.Module):
 
     def __init__(self, d_model: int, num_heads: int, dff: int, rate: float = 0.1, use_rope: bool = True,
                  use_moe: bool = False, moe_config=None, use_mla: bool = False,
-                 q_lora_rank: int = None, kv_lora_rank: int = None):
+                 q_lora_rank: int = None, kv_lora_rank: int = None, use_checkpoint: bool = False):
         super().__init__()
         self.mha1 = MultiHeadAttention(d_model, num_heads, use_rope=use_rope, use_mla=use_mla,
                                        q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)  # masked self-attn
@@ -976,6 +991,8 @@ class DecoderLayer(nn.Module):
         self.dropout1 = nn.Dropout(rate)
         self.dropout2 = nn.Dropout(rate)
         self.dropout3 = nn.Dropout(rate)
+        
+        self.use_checkpoint = use_checkpoint
 
     def forward(
             self,
@@ -1009,7 +1026,15 @@ class DecoderLayer(nn.Module):
             self_attn_past_kv, cross_attn_past_kv = None, None
         
         # TODO: 掩码自注意力 - 解码器自注意力，使用look-ahead+padding掩码防止信息泄露
-        mha1_output = self.mha1(x, x, x, mask=tgt_mask, past_key_value=self_attn_past_kv, use_cache=use_cache)
+        # 激活检查点：训练时节省显存
+        if self.use_checkpoint and self.training and not use_cache:
+            from torch.utils.checkpoint import checkpoint
+            mha1_output = checkpoint(
+                self.mha1, x, x, x, tgt_mask, self_attn_past_kv, use_cache,
+                use_reentrant=False
+            )
+        else:
+            mha1_output = self.mha1(x, x, x, mask=tgt_mask, past_key_value=self_attn_past_kv, use_cache=use_cache)
         
         if use_cache:
             attn1_out, attn_weights1, self_attn_present_kv = mha1_output
@@ -1022,15 +1047,28 @@ class DecoderLayer(nn.Module):
 
         # TODO: 交叉注意力 - 解码器对编码器输出的注意力，query来自decoder，key/value来自encoder
         # 注意：cross-attention不使用cache，因为encoder输出是固定的
-        mha2_output = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask, past_key_value=None, use_cache=False)
+        # 激活检查点：训练时节省显存
+        if self.use_checkpoint and self.training:
+            from torch.utils.checkpoint import checkpoint
+            mha2_output = checkpoint(
+                self.mha2, out1, enc_out, enc_out, enc_dec_mask, None, False,
+                use_reentrant=False
+            )
+        else:
+            mha2_output = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask, past_key_value=None, use_cache=False)
         attn2_out, attn_weights2 = mha2_output
         cross_attn_present_kv = None  # cross-attention不需要cache
         
         attn2_out = self.dropout2(attn2_out)
         out2 = self.norm2(out1 + attn2_out)
 
-        # 3) FFN
-        ffn_out = self.ffn(out2)  # [B,Lt,D] 或 (ffn_out, router_logits) 如果使用 MoE
+        # 3) FFN - 激活检查点
+        if self.use_checkpoint and self.training:
+            from torch.utils.checkpoint import checkpoint
+            ffn_out = checkpoint(self.ffn, out2, use_reentrant=False)
+        else:
+            ffn_out = self.ffn(out2)  # [B,Lt,D] 或 (ffn_out, router_logits) 如果使用 MoE
+            
         if isinstance(ffn_out, tuple):
             ffn_out, router_logits = ffn_out
         else:
@@ -1059,7 +1097,7 @@ class EncoderModel(nn.Module):
     def __init__(self, num_layers: int, input_vocab_size: int, max_length: int,
                  d_model: int, num_heads: int, dff: int, rate: float = 0.1,
                  padding_idx: int = None, use_rope: bool = True, use_moe: bool = False, moe_config=None,
-                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None):
+                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None, use_checkpoint: bool = False):
         """
         参数与 Keras 版本对齐；额外提供 padding_idx 以便 Embedding 忽略 pad 的梯度。
         """
@@ -1082,7 +1120,8 @@ class EncoderModel(nn.Module):
         # 堆叠 EncoderLayer（前面我们已实现过）
         self.encoder_layers = nn.ModuleList(
             [EncoderLayer(d_model, num_heads, dff, rate, use_rope=self.use_rope, use_moe=use_moe,
-                          moe_config=moe_config, use_mla=use_mla, q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)
+                          moe_config=moe_config, use_mla=use_mla, q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank,
+                          use_checkpoint=use_checkpoint)
              for _ in range(num_layers)]
         )
 
@@ -1163,7 +1202,7 @@ class DecoderModel(nn.Module):
     def __init__(self, num_layers: int, target_vocab_size: int, max_length: int,
                  d_model: int, num_heads: int, dff: int, rate: float = 0.1,
                  padding_idx: int = None, use_rope: bool = True, use_moe: bool = False, moe_config=None,
-                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None):
+                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None, use_checkpoint: bool = False):
         super().__init__()
         self.num_layers = num_layers
         self.max_length = max_length
@@ -1183,7 +1222,8 @@ class DecoderModel(nn.Module):
         # 堆叠解码层
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, dff, rate, use_rope=self.use_rope, use_moe=use_moe,
-                          moe_config=moe_config, use_mla=use_mla, q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)
+                          moe_config=moe_config, use_mla=use_mla, q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank,
+                          use_checkpoint=use_checkpoint)
              for _ in range(num_layers)]
         )
 
@@ -1276,7 +1316,8 @@ class Transformer(nn.Module):
                  max_length, d_model, num_heads, dff, rate=0.1,
                  src_padding_idx: int = None, tgt_padding_idx: int = None,
                  use_rope: bool = True, use_moe: bool = False, moe_config=None,
-                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None):
+                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None,
+                 use_checkpoint: bool = False):
         super().__init__()
         self.encoder_model = EncoderModel(
             num_layers=num_layers,
@@ -1293,6 +1334,7 @@ class Transformer(nn.Module):
             use_mla=use_mla,
             q_lora_rank=q_lora_rank,
             kv_lora_rank=kv_lora_rank,
+            use_checkpoint=use_checkpoint,
         )
         self.decoder_model = DecoderModel(
             num_layers=num_layers,
@@ -1309,6 +1351,7 @@ class Transformer(nn.Module):
             use_mla=use_mla,
             q_lora_rank=q_lora_rank,
             kv_lora_rank=kv_lora_rank,
+            use_checkpoint=use_checkpoint,
         )
         # 等价于 Keras 的 Dense(target_vocab_size)
         self.final_layer = nn.Linear(d_model, target_vocab_size)
@@ -1590,7 +1633,8 @@ class AverageMeter:
     def avg(self): return self.sum / max(1, self.n)
 
 
-def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, mtp_config=None):
+def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_config=None, use_multi_gpu=False, mtp_config=None, 
+               accumulation_steps=1, should_step=True):
     """
     训练单步
     
@@ -1663,7 +1707,8 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         logger.error(f"Loss is {loss.item()}, skipping this batch")
         return 0.0, 0.0
 
-    optimizer.zero_grad(set_to_none=True)
+    # 梯度累积：损失除以累积步数
+    loss = loss / accumulation_steps
     loss.backward()
 
     # 改进的梯度裁剪策略
@@ -1691,12 +1736,16 @@ def train_step(batch, transformer, optimizer, scheduler=None, device=None, moe_c
         logger.error("Skipping this batch due to NaN gradients")
         return 0.0, 0.0
 
-    optimizer.step()
-    if scheduler is not None:
-        scheduler.step()
+    # 只在应该更新参数时执行 optimizer.step
+    if should_step:
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+        if scheduler is not None:
+            scheduler.step()
 
     acc = token_accuracy(tar_real, logits, pad_id=TGT_PAD_ID)
-    return loss.item(), acc
+    # 返回原始 loss（未除以accumulation_steps），用于日志记录
+    return loss.item() * accumulation_steps, acc
 
 
 def train_model(
@@ -1714,6 +1763,7 @@ def train_model(
         moe_config=None,
         use_multi_gpu: bool = False,
         mtp_config=None,
+        gradient_accumulation_steps: int = 1,
 ):
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(tensorboard_dir, exist_ok=True)
@@ -1729,6 +1779,10 @@ def train_model(
     train_loss_meter = AverageMeter("train_loss")
     train_acc_meter = AverageMeter("train_accuracy")
     global_step = 0
+    
+    # 梯度累积初始化
+    if gradient_accumulation_steps > 1:
+        logger.info(f"✅ 梯度累积已启用: 累积{gradient_accumulation_steps}步, 有效batch={batch_size}×{gradient_accumulation_steps}={batch_size*gradient_accumulation_steps}")
 
     for epoch in range(epochs):
         try:
@@ -1736,16 +1790,25 @@ def train_model(
             train_loss_meter.reset()
             train_acc_meter.reset()
             model.train()
+            
+            # 梯度累积：在 epoch 开始时清零
+            optimizer.zero_grad(set_to_none=True)
 
             for batch_idx, batch in enumerate(train_loader):
+                # 判断是否应该在这一步更新参数
+                should_step = (batch_idx + 1) % gradient_accumulation_steps == 0
+                
                 loss_val, acc_val = train_step(
                     batch=batch, transformer=model, optimizer=optimizer, scheduler=scheduler, device=device,
-                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, mtp_config=mtp_config
+                    moe_config=moe_config, use_multi_gpu=use_multi_gpu, mtp_config=mtp_config,
+                    accumulation_steps=gradient_accumulation_steps, should_step=should_step
                 )
                 train_loss_meter.update(loss_val, 1)
                 train_acc_meter.update(acc_val, 1)
 
-                global_step += 1
+                # 只在参数更新时增加 global_step
+                if should_step:
+                    global_step += 1
 
                 # 记录到 TensorBoard
                 writer.add_scalar('Train/Loss', loss_val, global_step)
@@ -1987,11 +2050,6 @@ if __name__ == "__main__":
     use_mla = True   # Multi-head Latent Attention
     use_mtp = True   # Multi-Token Prediction
     
-    logger.info(f"🚀 Training Configuration:")
-    logger.info(f"   - MLA (Multi-head Latent Attention): {use_mla}")
-    logger.info(f"   - MTP (Multi-Token Prediction): {use_mtp}")
-    logger.info(f"   - MoE: True (fixed)")
-
     # 0. 常量定义
 
     # 数据文件地址（相对路径）
@@ -1999,22 +2057,34 @@ if __name__ == "__main__":
     val_path = "tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
     
+    # 构建词表参数
+    vocab_size = 2 ** 13  # 词表大小
+    min_freq = 2  # 最小词频
+    special_tokens = special_tokens  # 特殊符号
+    max_length = 256  # 最大序列长度（增大以启用Flash Attention）
+
+    # 模型训练超参数
+    batch_size = 128  # 批处理数 (充分利用46GB显存，提升GPU利用率)
+    gradient_accumulation_steps = 1  # 梯度累积步数（1=不累积，2/4=模拟2倍/4倍batch）
+    use_activation_checkpoint = False  # 激活检查点（节省30-50%显存，但速度慢20-30%）
+    
     # 根据是否使用MLA设置不同的checkpoint目录
     if use_mla:
         checkpoint_dir = 'checkpoints'
     else:
         checkpoint_dir = 'checkpoints_no_mla'
+    
+    # 打印训练配置
+    logger.info(f"🚀 Training Configuration:")
+    logger.info(f"   - MLA (Multi-head Latent Attention): {use_mla}")
+    logger.info(f"   - MTP (Multi-Token Prediction): {use_mtp}")
+    logger.info(f"   - MoE: True (fixed)")
+    logger.info(f"   - Batch Size: {batch_size}")
+    logger.info(f"   - Max Length: {max_length}")
+    logger.info(f"   - Gradient Accumulation: {gradient_accumulation_steps}x")
+    logger.info(f"   - Activation Checkpointing: {use_activation_checkpoint}")
+    logger.info(f"   - Flash Attention: 自动检测 (seq_len>=128时启用)")
     logger.info(f"   - Checkpoint目录: {checkpoint_dir}")
-
-    # 构建词表参数
-    vocab_size = 2 ** 13  # 词表大小
-    min_freq = 2  # 最小词频
-    special_tokens = special_tokens  # 特殊符号
-    max_length = 64  # 最大序列长度
-
-    # 模型训练超参数
-    batch_size = 128  # 批处理数 (充分利用46GB显存，提升GPU利用率)
-    gradient_accumulation_steps = 1  # 梯度累积步数（1=不累积，2/4=模拟2倍/4倍batch）
     warmup_steps = 4000  # warmup steps数
     epochs = 20  # 训练轮数
     # learning_rate = 1.0           # 学习率
@@ -2105,6 +2175,7 @@ if __name__ == "__main__":
         use_mla=use_mla,
         q_lora_rank=q_lora_rank,
         kv_lora_rank=kv_lora_rank,
+        use_checkpoint=use_activation_checkpoint,
     )
 
     # 权重初始化
@@ -2120,6 +2191,10 @@ if __name__ == "__main__":
 
     model.apply(init_weights)
     logger.info("✅ 标准 Transformer 模型初始化完成")
+    
+    # 激活检查点提示
+    if use_activation_checkpoint:
+        logger.info("✅ 激活检查点已启用: 显存节省30-50%，速度降低20-30%")
     
     # MTP 集成（可选）
     # use_mtp 已在命令行参数中定义
@@ -2298,4 +2373,5 @@ if __name__ == "__main__":
         moe_config=moe_config,  # MoE 配置
         use_multi_gpu=True,  # DP 多卡训练
         mtp_config=mtp_config if use_mtp else None,  # MTP 配置
+        gradient_accumulation_steps=gradient_accumulation_steps,  # 梯度累积
     )
