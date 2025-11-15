@@ -1942,7 +1942,7 @@ if __name__ == "__main__":
     max_length = 64  # 最大序列长度
 
     # 模型训练超参数
-    batch_size = 32  # 批处理数 (降低batch size避免OOM)
+    batch_size = 64  # 批处理数 (增大以充分利用46GB显存)
     warmup_steps = 4000  # warmup steps数
     epochs = 30  # 训练轮数
     # learning_rate = 1.0           # 学习率
@@ -2148,7 +2148,9 @@ if __name__ == "__main__":
         batch_size=batch_size,  # DP 自动分配到多个 GPU
         shuffle=True,  # DP 模式使用 shuffle
         collate_fn=collate_padded,
-        num_workers=0,
+        num_workers=4,  # 并行数据加载，避免GPU等待
+        prefetch_factor=2,  # 预取2个batch
+        persistent_workers=True,  # 保持worker进程，避免重复创建
         pin_memory=True if torch.cuda.is_available() else False,
     )
     val_loader2 = DataLoader(
@@ -2156,7 +2158,9 @@ if __name__ == "__main__":
         batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_padded,
-        num_workers=0,
+        num_workers=4,  # 并行数据加载
+        prefetch_factor=2,
+        persistent_workers=True,
         pin_memory=True if torch.cuda.is_available() else False,
     )
     # 测试 DataLoader
@@ -2164,6 +2168,15 @@ if __name__ == "__main__":
     
     # 用 DataParallel 包装模型
     model, _device = backend.wrap_model(model)
+    
+    # torch.compile 优化（PyTorch 2.0+）- 可提升10-40%速度
+    if hasattr(torch, 'compile'):
+        try:
+            logger.info("🚀 启用 torch.compile 优化...")
+            model = torch.compile(model, mode="reduce-overhead")
+            logger.info("✅ torch.compile 优化已启用")
+        except Exception as e:
+            logger.warning(f"⚠️ torch.compile 失败，继续使用普通模式: {e}")
     num_training_steps = len(train_loader2) * epochs
 
     # Fused AdamW（在 torch>=2.0 + CUDA 可用时）
