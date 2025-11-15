@@ -513,7 +513,8 @@ def scaled_dot_product_attention(q, k, v, mask=None, use_flash_attn=True):
         output: (..., seq_len_q, depth_v) 加权和
         attention_weights: (..., seq_len_q, seq_len_k) 注意力权重
     """
-    # 尝试使用 Flash Attention（需要 CUDA + fp16/bf16）
+    # 尝试使用 Flash Attention（需要 CUDA + fp16/bf16 + 长序列）
+    # Flash Attention 在短序列(<128)上没有优势，甚至因为转换开销变慢
     if use_flash_attn and torch.cuda.is_available() and q.dtype in [torch.float16, torch.bfloat16]:
         try:
             from flash_attn import flash_attn_func
@@ -523,6 +524,11 @@ def scaled_dot_product_attention(q, k, v, mask=None, use_flash_attn=True):
             if q.dim() == 4:  # [B, H, L, D]
                 B, H, Lq, D = q.shape
                 Lk = k.size(2)
+                
+                # 只在序列长度 >= 128 时使用 Flash Attention
+                # 短序列时转换开销大于收益
+                if Lq < 128:
+                    raise ValueError("序列太短，使用标准实现")
                 
                 # 转换形状: [B, H, L, D] -> [B, L, H, D]
                 q_flash = q.transpose(1, 2).contiguous()  # [B, Lq, H, D]
@@ -564,6 +570,11 @@ def scaled_dot_product_attention(q, k, v, mask=None, use_flash_attn=True):
             if not hasattr(scaled_dot_product_attention, '_flash_warning_shown'):
                 logger.info("⚠️ flash-attn 未安装，使用标准attention。安装: pip install flash-attn --no-build-isolation")
                 scaled_dot_product_attention._flash_warning_shown = True
+        except ValueError as e:
+            # 序列太短，不使用 Flash Attention
+            if not hasattr(scaled_dot_product_attention, '_seq_too_short_logged'):
+                logger.info(f"ℹ️ 序列长度 < 128，Flash Attention 优势不明显，使用标准实现（更快）")
+                scaled_dot_product_attention._seq_too_short_logged = True
         except Exception as e:
             # Flash Attention 执行失败，回退到标准实现
             if not hasattr(scaled_dot_product_attention, '_flash_error_shown'):
