@@ -2064,9 +2064,9 @@ if __name__ == "__main__":
     max_length = 256  # 最大序列长度（增大以启用Flash Attention）
 
     # 模型训练超参数
-    batch_size = 128  # 批处理数 (充分利用46GB显存，提升GPU利用率)
+    batch_size = 192  # 批处理数 (激活检查点后可以更大，充分利用46GB显存)
     gradient_accumulation_steps = 1  # 梯度累积步数（1=不累积，2/4=模拟2倍/4倍batch）
-    use_activation_checkpoint = False  # 激活检查点（节省30-50%显存，但速度慢20-30%）
+    use_activation_checkpoint = True  # ✅ 激活检查点（节省30-50%显存，可支持更大batch）
     
     # 根据是否使用MLA设置不同的checkpoint目录
     if use_mla:
