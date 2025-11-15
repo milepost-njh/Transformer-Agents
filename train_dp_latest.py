@@ -9,16 +9,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import pandas as pd
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import sklearn
 from pathlib import Path
 from datasets import load_dataset
 from tokenizers import ByteLevelBPETokenizer
 from transformers import PreTrainedTokenizerFast
 from torch.utils.data import Dataset, DataLoader
-import matplotlib.pyplot as plt
 import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 from transformers import get_cosine_schedule_with_warmup
@@ -32,9 +27,7 @@ from core.normalization import RMSNorm, LayerNorm
 from training.parallel.config import ParallelConfig, ParallelMode
 from training.parallel.factory import create_backend
 
-# 多卡训练设置（DDP 通过后端统一管理）
-import torch.distributed as dist
-
+# 多卡训练设置（DP DataParallel 单进程多GPU）
 # 不在代码中强行设置 CUDA_VISIBLE_DEVICES，改由启动脚本/外部环境控制
 
 # 修复警告信息
@@ -83,20 +76,6 @@ class MoEConfig:
         self.moe_intermediate_size = moe_intermediate_size
 
 
-def get_device():
-    """自动检测可用设备"""
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        print(f"✅ 使用 GPU: {torch.cuda.get_device_name()}")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")  # Apple Silicon GPU
-        print("✅ 使用 Apple Silicon GPU (MPS)")
-    else:
-        device = torch.device("cpu")
-        print("✅ 使用 CPU")
-    return device
-
-
 def setup_multi_gpu():
     """
     设置多卡训练环境
@@ -124,7 +103,7 @@ def wrap_model_for_multi_gpu(model, use_multi_gpu, gpu_count):
     为多卡训练包装模型
     """
     if use_multi_gpu and gpu_count > 1:
-        # 兼容旧接口：若需要DP，动态导入；当前方案用DDP，不再使用DP
+        # 兼容旧接口：若需要DP，动态导入；当前方案用DP
         try:
             from torch.nn.parallel import DataParallel as _DP
             logger.info(f"使用DataParallel包装模型，GPU数量: {gpu_count}")
@@ -448,94 +427,6 @@ def test_dataloaders(train_loader, val_loader, show_val: bool = True):
     logger.info(f"✅ DataLoader测试通过: batch_size={batch['pt_input_ids'].shape[0]}, seq_len={batch['pt_input_ids'].shape[1]}")
 
 
-class RoPEPositionalEncoding:
-    def __init__(self, max_len, d_model, nums_head=8, batch_size=1, device=None):
-        self.max_len = max_len
-        self.d_model = d_model
-        self.nums_head = nums_head
-        self.batch_size = batch_size
-
-        if device is None:
-            self.device = get_device()
-        else:
-            self.device = device
-
-    def sinusoidal_position_embedding(self):
-        """
-        生成RoPE位置编码矩阵
-        返回: [batch_size, nums_head, max_len, d_model]
-        """
-        # (max_len, 1)
-        position = torch.arange(0, self.max_len, dtype=torch.float).unsqueeze(-1)
-
-        # (d_model//2)
-        ids = torch.arange(0, self.d_model // 2, dtype=torch.float)
-        theta = torch.pow(10000, -2 * ids / self.d_model)
-
-        # (max_len, d_model//2)
-        embeddings = position * theta
-
-        # (max_len, d_model//2, 2)
-        embeddings = torch.stack([torch.sin(embeddings), torch.cos(embeddings)], dim=-1)
-
-        # (batch_size, nums_head, max_len, d_model//2, 2)
-        embeddings = embeddings.repeat((self.batch_size, self.nums_head, *([1] * len(embeddings.shape))))
-
-        # (batch_size, nums_head, max_len, d_model)
-        embeddings = torch.reshape(embeddings, (self.batch_size, self.nums_head, self.max_len, self.d_model))
-
-        return embeddings.to(self.device)
-
-    def get_rope_embedding_matrix(self):
-        """
-        获取RoPE位置编码矩阵用于可视化
-        返回: [max_len, d_model]
-        """
-        # 只取第一个batch和第一个head的位置编码
-        rope_emb = self.sinusoidal_position_embedding()
-        return rope_emb[0, 0].detach().cpu()  # [max_len, d_model]
-
-    def get_rotation_matrices(self, positions_to_show=5):
-        """
-        获取旋转矩阵的可视化数据
-        对于每个位置，计算旋转矩阵对向量的影响
-        """
-        # 生成一些测试向量
-        test_vectors = []
-        for i in range(4):
-            angle = i * math.pi / 4  # 0, 45, 90, 135度
-            vec = torch.tensor([math.cos(angle), math.sin(angle)], dtype=torch.float32)
-            test_vectors.append(vec)
-
-        # 计算旋转效果
-        rotation_data = []
-        for pos in range(min(positions_to_show, self.max_len)):
-            pos_emb = self.sinusoidal_position_embedding()[0, 0, pos]  # 取第一个位置编码
-
-            rotated_vectors = []
-            for vec in test_vectors:
-                # 简化版的旋转计算（只考虑前两个维度）
-                cos_theta = pos_emb[1]  # cos分量
-                sin_theta = pos_emb[0]  # sin分量
-
-                # 旋转矩阵 [cos, -sin; sin, cos]
-                rotation_matrix = torch.tensor([
-                    [cos_theta, -sin_theta],
-                    [sin_theta, cos_theta]
-                ])
-
-                rotated_vec = torch.matmul(rotation_matrix, vec)
-                rotated_vectors.append({
-                    'original': vec.numpy(),
-                    'rotated': rotated_vec.numpy(),
-                    'position': pos
-                })
-
-            rotation_data.append(rotated_vectors)
-
-        return rotation_data
-
-
 def get_position_embedding(sentence_length: int, d_model: int, device="cuda", dtype=torch.float32):
     """
     返回 position 对应的 embedding 矩阵
@@ -577,25 +468,6 @@ def get_position_embedding(sentence_length: int, d_model: int, device="cuda", dt
     position_embedding = position_embedding.unsqueeze(0)
 
     return position_embedding
-
-
-def plot_position_embedding(position_embedding: torch.Tensor):
-    """
-    可视化位置编码矩阵
-    参数:
-        position_embedding: [1, L, D] 的张量
-    """
-    # 转到 CPU，并转成 numpy
-    pe = position_embedding.detach().cpu().numpy()[0]  # [L, D]
-
-    plt.figure(figsize=(10, 6))
-    plt.pcolormesh(pe, cmap='RdBu')  # L × D 矩阵
-    plt.xlabel("Depth (d_model)")
-    plt.xlim((0, pe.shape[1]))
-    plt.ylabel("Position (pos)")
-    plt.colorbar()
-    plt.title("Positional Encoding Visualization")
-    plt.show()
 
 
 def create_padding_mask(batch_data: torch.Tensor, pad_token_id: int = 0):
@@ -1503,33 +1375,6 @@ class CustomizedSchedule(_LRScheduler):
         return [lr for _ in self.base_lrs]
 
 
-def plot_customized_lr_curve(optimizer, scheduler, total_steps: int, label: str = None):
-    """
-    绘制学习率曲线（支持传入已有 optimizer 和 scheduler）
-
-    Args:
-        optimizer (torch.optim.Optimizer): 优化器
-        scheduler (torch.optim.lr_scheduler._LRScheduler): 学习率调度器
-        total_steps (int): 总训练步数
-        label (str): 图例标签，默认使用 scheduler 配置
-    """
-    lrs = []
-    for step in range(total_steps):
-        scheduler.step()
-        lr = scheduler.get_last_lr()[0]
-        lrs.append(lr)
-
-    # 绘制曲线
-    plt.figure(figsize=(8, 4))
-    plt.plot(range(1, total_steps + 1), lrs, label=label or "LR Curve")
-    plt.ylabel("Learning Rate")
-    plt.xlabel("Train Step")
-    plt.title("Learning Rate Schedule")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
-
 def loss_function(real, pred, router_logits=None, moe_config=None, mtp_logits=None, mtp_config=None):
     """
     Args:
@@ -1945,75 +1790,6 @@ def train_model(
 
 
 @torch.no_grad()
-def evaluate(
-        inp_sentence: str,
-        transformer: Transformer,
-        pt_tokenizer,
-        en_tokenizer,
-        max_length: int,
-        device: str = None):
-    """
-    inp_sentence: 输入的源语言字符串 (pt)
-    transformer: 已训练的 Transformer
-    pt_tokenizer, en_tokenizer: 分别是葡萄牙语和英语 tokenizer
-    max_length: 最大生成长度
-    """
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    transformer.eval()
-    transformer.to(device)
-
-    # 1. 编码输入，加 <s> 和 </s>
-    def encode_with_bos_eos(tokenizer, text: str):
-        ids = tokenizer.encode(text, add_special_tokens=False)
-        bos_id = tokenizer.bos_token_id
-        eos_id = tokenizer.eos_token_id
-        if bos_id is None or eos_id is None:
-            raise ValueError("请确保 tokenizer 设置了 bos_token/eos_token")
-        return [bos_id] + ids + [eos_id]
-
-    inp_ids = encode_with_bos_eos(pt_tokenizer, inp_sentence)
-    encoder_input = torch.tensor(inp_ids, dtype=torch.long, device=device).unsqueeze(0)  # (1, Ls)
-
-    # 2. decoder 起始符 <s>
-    start_id = en_tokenizer.bos_token_id
-    end_id = en_tokenizer.eos_token_id
-    decoder_input = torch.tensor([[start_id]], dtype=torch.long, device=device)  # (1, 1)
-
-    # 3. 循环预测
-    attention_weights = {}
-    for _ in range(max_length):
-        enc_pad_mask, dec_mask, enc_dec_pad_mask = create_masks(
-            encoder_input, decoder_input,
-            src_pad_id=pt_tokenizer.pad_token_id,
-            tgt_pad_id=en_tokenizer.pad_token_id,
-        )
-        enc_dec_mask = enc_dec_pad_mask.expand(-1, 1, decoder_input.size(1), -1)
-
-        logits, attn = transformer(
-            encoder_input, decoder_input,
-            src_mask=enc_pad_mask,
-            tgt_mask=dec_mask,
-            enc_dec_mask=enc_dec_mask,
-        )
-
-        # 取最后一步预测
-        next_token_logits = logits[:, -1, :]  # (1, V)
-        predicted_id = torch.argmax(next_token_logits, dim=-1)  # (1,)
-
-        if predicted_id.item() == end_id:
-            break
-
-        # 拼接到 decoder_input
-        decoder_input = torch.cat(
-            [decoder_input, predicted_id.unsqueeze(0)], dim=-1
-        )  # (1, Lt+1)
-        attention_weights = attn
-
-    return decoder_input.squeeze(0).tolist(), attention_weights
-
-
-@torch.no_grad()
 def evaluate_on_val(model, val_loader, device, moe_config=None, mtp_config=None):
     model.eval()
     total_loss = 0
@@ -2063,85 +1839,6 @@ def evaluate_on_val(model, val_loader, device, moe_config=None, mtp_config=None)
     avg_loss = total_loss / total_count
     avg_acc = total_acc / total_count
     return avg_loss, avg_acc
-
-
-def plot_encoder_decoder_attention(attention, input_sentence, result, layer_name):
-    """
-    attention: 来自 forward 返回的 attention_weights dict
-               形状 [B, num_heads, tgt_len, src_len]
-    input_sentence: 源语言字符串
-    result: 目标句子 token id 列表 (decoder 输出)
-    layer_name: 指定可视化的层 key，比如 "decoder_layer1_att2"
-    """
-    fig = plt.figure(figsize=(16, 8))
-
-    # 源句子编码
-    input_id_sentence = pt_tokenizer.encode(input_sentence, add_special_tokens=False)
-
-    # 取 batch 维度 squeeze，并转 numpy
-    attn = attention[layer_name].squeeze(0)  # [num_heads, tgt_len, src_len]
-    attn = attn.detach().cpu().numpy()
-
-    for head in range(attn.shape[0]):
-        ax = fig.add_subplot(2, 4, head + 1)
-
-        # 只取 result[:-1] 的注意力 (去掉最后 <eos>)
-        ax.matshow(attn[head][:-1, :], cmap="viridis")
-
-        fontdict = {"fontsize": 10}
-
-        # X 轴: 输入 token (<s> + sentence + </s>)
-        ax.set_xticks(range(len(input_id_sentence) + 2))
-        ax.set_xticklabels(
-            ["<s>"] + [pt_tokenizer.decode([i]) for i in input_id_sentence] + ["</s>"],
-            fontdict=fontdict, rotation=90,
-        )
-
-        # Y 轴: decoder 输出 token
-        ax.set_yticks(range(len(result)))
-        ax.set_yticklabels(
-            [en_tokenizer.decode([i]) for i in result if i < en_tokenizer.vocab_size],
-            fontdict=fontdict,
-        )
-
-        ax.set_ylim(len(result) - 1.5, -0.5)
-        ax.set_xlabel(f"Head {head + 1}")
-
-    plt.tight_layout()
-    plt.show()
-
-
-def translate(input_sentence, transformer, pt_tokenizer, en_tokenizer,
-              max_length=64, device=None, layer_name=""):
-    # 调用我们改好的 evaluate (PyTorch 版)
-    result, attention_weights = evaluate(
-        inp_sentence=input_sentence,
-        transformer=transformer,
-        pt_tokenizer=pt_tokenizer,
-        en_tokenizer=en_tokenizer,
-        max_length=max_length,
-        device=device,
-    )
-
-    # 把 token id 转回句子
-    predicted_sentence = en_tokenizer.decode(
-        [i for i in result if i < en_tokenizer.vocab_size],
-        skip_special_tokens=True
-    )
-
-    logger.info("Input: {}".format(input_sentence))
-    logger.info(f"Predicted translation: {predicted_sentence}")
-
-    # 如果传入了 layer_name，就画注意力图
-    if layer_name:
-        plot_encoder_decoder_attention(
-            attention_weights,
-            input_sentence,
-            result,
-            layer_name
-        )
-
-    return predicted_sentence
 
 
 def save_ckpt(model, optimizer, scheduler, epoch, step, ckpt_dir="checkpoints", tag="latest", use_multi_gpu=False):
@@ -2378,15 +2075,13 @@ if __name__ == "__main__":
         # 为现有 Transformer 添加 MTP 功能
         model = add_mtp_to_transformer(model, mtp_config)
 
-    # 5. DDP 后端：初始化并包装模型
-    p_cfg = ParallelConfig(mode=ParallelMode.ddp)
+    # 5. DP 后端：初始化并包装模型（DataParallel 单进程多GPU）
+    p_cfg = ParallelConfig(mode=ParallelMode.dp)
     backend = create_backend(p_cfg)
-    backend.init_dist()
+    backend.init_dist()  # DP 模式下此方法为空操作
     
-    # 提前构建过滤后的 pairs（避免在每个进程中重复构建）
-    # 只在 rank0 打印信息
-    if dist.get_rank() == 0:
-        logger.info("开始构建过滤后的训练数据对...")
+    # 构建过滤后的训练数据对
+    logger.info("开始构建过滤后的训练数据对...")
     
     # 构建过滤后的样本对（这部分逻辑从 build_dataloaders 中提取）
     def encode_with_bos_eos(tokenizer, text: str):
@@ -2409,8 +2104,7 @@ if __name__ == "__main__":
     train_pairs = build_filtered_pairs(train_dataset, pt_tokenizer, en_tokenizer, max_length)
     val_pairs = build_filtered_pairs(val_dataset, pt_tokenizer, en_tokenizer, max_length)
     
-    if dist.get_rank() == 0:
-        logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
+    logger.info(f"✅ 过滤后数据集: 训练集 {len(train_pairs)} 条, 验证集 {len(val_pairs)} 条")
     
     # 创建 PairsDataset
     class PairsDataset(Dataset):
@@ -2427,7 +2121,7 @@ if __name__ == "__main__":
     filtered_train_dataset = PairsDataset(train_pairs)
     filtered_val_dataset = PairsDataset(val_pairs)
     
-    # 基于过滤后的数据集创建分布式采样器
+    # DP 模式不需要分布式采样器（返回 None）
     train_sampler, val_sampler = backend.get_samplers(filtered_train_dataset, filtered_val_dataset)
     
     # 直接创建 DataLoader（使用过滤后的 dataset 和 sampler）
@@ -2454,28 +2148,27 @@ if __name__ == "__main__":
             "en_attention_mask": en_attention_mask,
         }
     
-    effective_batch_size = batch_size * gpu_count
+    # DP 模式：单进程多GPU，batch_size 保持不变（DataParallel 会自动分配）
     train_loader2 = DataLoader(
         filtered_train_dataset,
-        batch_size=effective_batch_size,
-        shuffle=False,  # DDP下由sampler控制shuffle
-        sampler=train_sampler,
+        batch_size=batch_size,  # DP 自动分配到多个 GPU
+        shuffle=True,  # DP 模式使用 shuffle
         collate_fn=collate_padded,
         num_workers=0,
         pin_memory=True if torch.cuda.is_available() else False,
     )
     val_loader2 = DataLoader(
         filtered_val_dataset,
-        batch_size=effective_batch_size,
+        batch_size=batch_size,
         shuffle=False,
-        sampler=val_sampler,
         collate_fn=collate_padded,
         num_workers=0,
         pin_memory=True if torch.cuda.is_available() else False,
     )
-    # 只在rank0测试
-    if dist.get_rank() == 0:
-        test_dataloaders(train_loader2, val_loader2)
+    # 测试 DataLoader
+    test_dataloaders(train_loader2, val_loader2)
+    
+    # 用 DataParallel 包装模型
     model, _device = backend.wrap_model(model)
     num_training_steps = len(train_loader2) * epochs
 
@@ -2523,6 +2216,6 @@ if __name__ == "__main__":
         ckpt_prefix="transformer",
         tensorboard_dir="runs",  # TensorBoard 日志目录
         moe_config=moe_config,  # MoE 配置
-        use_multi_gpu=True,  # DDP 多卡训练
+        use_multi_gpu=True,  # DP 多卡训练
         mtp_config=mtp_config if use_mtp else None,  # MTP 配置
     )
