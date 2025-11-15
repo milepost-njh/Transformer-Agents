@@ -1929,9 +1929,9 @@ if __name__ == "__main__":
 
     # 0. 常量定义
 
-    # 数据文件地址
-    train_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_train.csv"
-    val_path = "/data2/workspace/yszhang/train_transformers/tensorflow_datasets/por_en_test.csv"
+    # 数据文件地址（相对路径）
+    train_path = "tensorflow_datasets/por_en_train.csv"
+    val_path = "tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
     
     # 根据是否使用MLA设置不同的checkpoint目录
