@@ -253,7 +253,10 @@ class DeepSeekMTPWrapper(nn.Module):
                     inputs_embeds=inputs_embeds,
                     spec_step_idx=0
                 )
-                # MTP执行成功（日志已禁用，避免刷屏）
+                # 只在第一次执行时打印日志（使用类级别标志避免DP模式重复打印）
+                if not hasattr(DeepSeekMTPWrapper, '_first_forward_logged'):
+                    logger.info(f"✅ MTP初始化成功: 预测层数={len(mtp_logits)}, 示例logits形状={mtp_logits[0].shape if mtp_logits else None}")
+                    DeepSeekMTPWrapper._first_forward_logged = True
             except Exception as e:
                 logger.error(f"MTP forward error: {e}")
                 mtp_logits = None

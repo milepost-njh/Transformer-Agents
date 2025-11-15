@@ -1415,6 +1415,11 @@ def loss_function(real, pred, router_logits=None, moe_config=None, mtp_logits=No
         mtp_loss_weight = mtp_config.mtp_loss_weight if mtp_config else 0.1
         mtp_loss = compute_mtp_loss(mtp_logits, real.reshape(B, L), mtp_loss_weight)
         total_loss = total_loss + mtp_loss
+        
+        # 只在第一次计算MTP损失时打印日志（避免DP模式重复打印）
+        if not hasattr(loss_function, '_mtp_loss_logged'):
+            logger.info(f"✅ MTP损失已启用: 权重={mtp_loss_weight}, 首次损失={mtp_loss:.4f}, 总损失={total_loss:.4f}")
+            loss_function._mtp_loss_logged = True
 
     return total_loss
 
