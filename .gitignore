@@ -102,3 +102,4 @@ tensorflow_datasets/
 tok_en/
 tok_pt/
 start_git.sh
+runs_ddp/
