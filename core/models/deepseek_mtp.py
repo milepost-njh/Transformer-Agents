@@ -81,7 +81,8 @@ class DeepSeekMTPLayer(nn.Module):
         """
         # 掩码位置 0 的输入（MTP 不需要）
         inputs_embeds = inputs_embeds.clone()
-        inputs_embeds[positions == 0] = 0
+        if positions is not None:
+             inputs_embeds[positions == 0] = 0
         
         # 归一化
         inputs_embeds = self.enorm(inputs_embeds)
@@ -182,92 +183,129 @@ class DeepSeekMTPWrapper(nn.Module):
         self.mtp_module = DeepSeekMTP(mtp_config)
         self.mtp_config = mtp_config
         
-        # 用于将logits转换为embedding的线性层（延迟初始化）
-        self.logits_to_embedding = None
-        self.logits_to_hidden = None
+        # 共享 Embedding：直接使用主模型的 embedding
+        # 这样可以确保 MTP 的输入特征与主模型一致，且被正确训练
+        self.embed_tokens = base_transformer.decoder_model.embedding
         
-    def forward(self, inp_ids, tgt_ids, src_mask=None, tgt_mask=None, enc_dec_mask=None):
+    def forward(self, inp_ids, tgt_ids, src_mask=None, tgt_mask=None, enc_dec_mask=None, 
+                past_key_values=None, use_cache=False, encoder_outputs=None):
         """
         增强的 forward 方法，支持 MTP 多 token 预测
         返回:
             logits: 主模型的 logits
             attention_weights: 注意力权重
+            router_logits: MoE 路由 logits
             mtp_logits: MTP 预测的 logits 列表（如果启用）
         """
         # 主模型前向传播
-        transformer_output = self.base_transformer(inp_ids, tgt_ids, src_mask, tgt_mask, enc_dec_mask)
+        # 注意：这里假设 Transformer 已修改为返回 hidden_states
+        transformer_output = self.base_transformer(
+            inp_ids, tgt_ids, src_mask, tgt_mask, enc_dec_mask,
+            past_key_values, use_cache, encoder_outputs
+        )
         
-        # 处理主模型输出
-        if isinstance(transformer_output, tuple) and len(transformer_output) == 3:
-            logits, attention_weights, router_logits = transformer_output
-        elif isinstance(transformer_output, tuple) and len(transformer_output) == 2:
-            logits, attention_weights = transformer_output
-            router_logits = None
+        # 解析输出
+        logits = None
+        attention_weights = None
+        router_logits = None
+        hidden_states = None
+        present_key_values = None
+        
+        # 根据 Transformer 返回值的长度进行解析
+        if use_cache:
+            # 训练时通常不使用 cache，这里主要处理推理场景
+            if len(transformer_output) == 4:
+                logits, attention_weights, present_key_values, hidden_states = transformer_output
+            elif len(transformer_output) == 5:
+                logits, attention_weights, present_key_values, router_logits, hidden_states = transformer_output
         else:
-            logits = transformer_output
-            attention_weights = None
-            router_logits = None
+            # 训练场景
+            if len(transformer_output) == 3:
+                logits, attention_weights, hidden_states = transformer_output
+            elif len(transformer_output) == 4:
+                logits, attention_weights, router_logits, hidden_states = transformer_output
+            else:
+                # 兼容旧接口（虽然我们已经修改了 Transformer）
+                logger.warning(f"Unexpected transformer output length: {len(transformer_output)}")
+                if len(transformer_output) == 2:
+                    logits, attention_weights = transformer_output
+                elif len(transformer_output) == 3 and isinstance(transformer_output[2], list): # 假设第3个是router_logits
+                    logits, attention_weights, router_logits = transformer_output
         
         # 如果启用 MTP，进行多 token 预测
         mtp_logits = None
-        if hasattr(self, 'mtp_module') and self.mtp_module is not None:
-            # 获取主模型的隐藏状态用于MTP预测
-            # 这里需要从主模型中提取隐藏状态
-            # 由于当前transformer输出结构，我们需要重新设计这部分
+        if hidden_states is not None and hasattr(self, 'mtp_module') and self.mtp_module is not None:
+            batch_size, seq_len, _ = hidden_states.shape
             
-            # 临时解决方案：使用logits作为输入来生成MTP预测
-            # 在实际应用中，应该从transformer的中间层获取隐藏状态
-            batch_size, seq_len, vocab_size = logits.shape
+            # 1. 准备输入 Embedding
+            # MTP 需要下一个 token 的 embedding 作为输入的一部分
+            # 对于训练：tgt_ids 是 decoder 的输入（已 shift），我们需要预测下一个 token
+            # 这里我们使用 tgt_ids 对应的 embedding 作为 inputs_embeds
+            # 注意：MTP 的设计通常是利用当前 hidden state 预测下一个 token，
+            # 并利用下一个 token 的 embedding 和当前 hidden state 预测再下一个 token
             
-            # 创建位置编码用于MTP
-            positions = torch.arange(seq_len, device=logits.device).unsqueeze(0).expand(batch_size, -1)
+            # 获取目标 embedding
+            inputs_embeds = self.embed_tokens(tgt_ids) * self.base_transformer.decoder_model.scale
             
-            # 使用logits的最后一个token作为输入embedding的近似
-            # 这里应该使用真正的embedding，但作为临时方案
-            last_token_logits = logits[:, -1:, :]  # [batch_size, 1, vocab_size]
+            # 2. 准备位置信息
+            positions = torch.arange(seq_len, device=hidden_states.device).unsqueeze(0).expand(batch_size, -1)
             
-            # 将logits转换为embedding-like表示
-            # 使用线性变换将vocab_size维度映射到hidden_size
-            if self.logits_to_embedding is None:
-                self.logits_to_embedding = nn.Linear(vocab_size, self.mtp_config.hidden_size, bias=False).to(logits.device)
-                # 将新创建的层注册为模块参数
-                self.add_module('logits_to_embedding', self.logits_to_embedding)
+            # 3. 全序列 MTP 预测 (Whole Sequence Training)
+            # 我们对序列中的每个位置都进行预测，而不仅仅是最后一个位置
             
-            inputs_embeds = self.logits_to_embedding(last_token_logits)  # [batch_size, 1, hidden_size]
+            # 递归预测未来 K 个 token
+            all_mtp_logits = []
+            current_hidden_states = hidden_states
             
-            # 使用主模型的输出作为previous_hidden_states
-            # 这里需要重新设计，因为我们需要真正的隐藏状态
-            if self.logits_to_hidden is None:
-                self.logits_to_hidden = nn.Linear(vocab_size, self.mtp_config.hidden_size, bias=False).to(logits.device)
-                # 将新创建的层注册为模块参数
-                self.add_module('logits_to_hidden', self.logits_to_hidden)
+            # 循环预测每一层
+            for i in range(self.mtp_config.num_nextn_predict_layers):
+                try:
+                    # 第一层 MTP 预测
+                    # 输入: h_t, emb_t
+                    # 输出: h'_{t+1}, logits_{t+1} (预测 x_{t+2})
+                    
+                    current_hidden_states, layer_mtp_logits = self.mtp_module(
+                        input_ids=None,
+                        positions=positions,
+                        hidden_states=current_hidden_states,
+                        inputs_embeds=inputs_embeds, # 使用当前输入的 embedding
+                        spec_step_idx=i
+                    )
+                    
+                    # layer_mtp_logits 是一个 list
+                    if isinstance(layer_mtp_logits, list):
+                        all_mtp_logits.extend(layer_mtp_logits)
+                    else:
+                        all_mtp_logits.append(layer_mtp_logits)
+                    
+                except Exception as e:
+                    logger.error(f"MTP layer {i} forward error: {e}")
+                    break
             
-            previous_hidden_states = self.logits_to_hidden(last_token_logits)  # [batch_size, 1, hidden_size]
+            mtp_logits = all_mtp_logits
             
-            # 调用MTP模块进行多token预测
-            try:
-                _, mtp_logits = self.mtp_module(
-                    input_ids=None,  # MTP不需要input_ids
-                    positions=positions[:, -1:],  # 只使用最后一个位置
-                    hidden_states=previous_hidden_states,
-                    inputs_embeds=inputs_embeds,
-                    spec_step_idx=0
-                )
-                # 只在第一次执行时打印日志（使用类级别标志避免DP模式重复打印）
-                if not hasattr(DeepSeekMTPWrapper, '_first_forward_logged'):
-                    logger.info(f"✅ MTP初始化成功: 预测层数={len(mtp_logits)}, 示例logits形状={mtp_logits[0].shape if mtp_logits else None}")
-                    DeepSeekMTPWrapper._first_forward_logged = True
-            except Exception as e:
-                logger.error(f"MTP forward error: {e}")
-                mtp_logits = None
+            # 只在第一次执行时打印日志
+            if not hasattr(DeepSeekMTPWrapper, '_first_forward_logged'):
+                logger.info(f"✅ MTP全序列训练已修复: 输入形状={hidden_states.shape}, 预测层数={len(mtp_logits)}")
+                DeepSeekMTPWrapper._first_forward_logged = True
         
         # 返回结果
-        if mtp_logits is not None:
-            return logits, attention_weights, router_logits, mtp_logits
-        elif router_logits is not None:
-            return logits, attention_weights, router_logits
+        if use_cache:
+             # 推理模式返回
+            if mtp_logits is not None:
+                 return logits, attention_weights, present_key_values, router_logits, mtp_logits
+            elif router_logits is not None:
+                 return logits, attention_weights, present_key_values, router_logits
+            else:
+                 return logits, attention_weights, present_key_values
         else:
-            return logits, attention_weights
+            # 训练模式返回
+            if mtp_logits is not None:
+                return logits, attention_weights, router_logits, mtp_logits
+            elif router_logits is not None:
+                return logits, attention_weights, router_logits
+            else:
+                return logits, attention_weights
 
 
 def compute_mtp_loss(mtp_logits_list: List[torch.Tensor], target_ids: torch.Tensor, mtp_loss_weight: float = 0.1) -> torch.Tensor:
@@ -288,26 +326,37 @@ def compute_mtp_loss(mtp_logits_list: List[torch.Tensor], target_ids: torch.Tens
     total_mtp_loss = 0.0
     num_predictions = len(mtp_logits_list)
     
-    # 为每个预测步骤计算损失
+    # target_ids 是主任务的 labels，即 x_{t+1}
+    # MTP 第 1 层预测的是 x_{t+2}，所以需要 shift target_ids
+    
+    batch_size, seq_len = target_ids.shape
+    
     for i, mtp_logits in enumerate(mtp_logits_list):
-        # mtp_logits: [batch_size, seq_len, vocab_size] 或 [batch_size, 1, vocab_size]
-        # 我们需要预测目标序列中接下来的 token
+        # mtp_logits: [batch_size, seq_len, vocab_size]
+        # 第 i 层 MTP 预测的是未来第 i+1 个 token (相对于主任务预测的 next token)
+        # 主任务: h_t -> x_{t+1}
+        # MTP_0:  h_t -> x_{t+2} (这里为了简化，假设 MTP_0 预测 +2 步)
         
-        # 获取目标序列中对应位置的 token
-        if i + 1 < target_ids.shape[1]:
-            target_tokens = target_ids[:, i + 1:i + 2]  # [batch_size, 1]
+        # 实际上，我们的实现中 MTP_0 是基于 h_t 预测 x_{t+1} 的辅助任务 (类似 Deep Seek V3 的 MTP 模块作为补充)
+        # 或者 MTP_0 预测 x_{t+2}
+        
+        # 假设 MTP_k 预测 x_{t+k+2}
+        shift = i + 1
+        
+        # 截取有效的 logits 和 targets
+        # logits: [0, ..., L-1]
+        # targets: [0, ..., L-1] (即 x_1, ..., x_L)
+        
+        # 我们需要预测 x_{t+1+shift}
+        # valid length = seq_len - shift
+        
+        if seq_len > shift:
+            valid_logits = mtp_logits[:, :-shift, :] # [B, L-shift, V]
+            valid_targets = target_ids[:, shift:]     # [B, L-shift]
             
-            # 确保logits和targets的维度匹配
-            if mtp_logits.dim() == 3:
-                # 如果是 [batch_size, seq_len, vocab_size]，取最后一个时间步
-                pred_logits = mtp_logits[:, -1:, :]  # [batch_size, 1, vocab_size]
-            else:
-                pred_logits = mtp_logits  # [batch_size, 1, vocab_size]
-            
-            # 计算交叉熵损失
             loss = F.cross_entropy(
-                pred_logits.squeeze(1),  # [batch_size, vocab_size]
-                target_tokens.squeeze(1),  # [batch_size]
+                valid_logits.reshape(-1, valid_logits.size(-1)),
+                valid_targets.reshape(-1),
                 reduction='mean'
             )
             total_mtp_loss += loss

@@ -4,13 +4,9 @@ set -euo pipefail
 
 mkdir -p logs
 
-# 推断使用的 GPU 数量（优先 CUDA_VISIBLE_DEVICES，否则用 nvidia-smi）
-if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
-  IFS=',' read -ra DEV_ARR <<< "$CUDA_VISIBLE_DEVICES"
-  NPROC=${NPROC:-${#DEV_ARR[@]}}
-else
-  NPROC=${NPROC:-$(nvidia-smi -L | wc -l)}
-fi
+# 写死使用1,2,5,6,7号卡训练
+export CUDA_VISIBLE_DEVICES=1,2,5,6,7
+NPROC=5
 
 # 分布式必备环境，提升稳定性
 export MASTER_ADDR=${MASTER_ADDR:-127.0.0.1}

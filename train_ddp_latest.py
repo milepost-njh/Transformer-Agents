@@ -1472,15 +1472,26 @@ class Transformer(nn.Module):
                 "decoder": decoder_present_kv
             }
 
-        # 返回值处理
+        # 返回值处理 (添加 hidden_states 支持)
+        # 统一返回格式，增加 hidden_states 作为最后一个元素（如果需要）
+        # 但为了兼容现有代码，我们将 hidden_states 附加在其他返回值之后或者作为额外属性
+        # 这里我们选择修改 DeepSeekMTPWrapper 来获取 hidden_states，而不是修改 Transformer 的返回值签名
+        # 因为 Transformer 的返回值签名已经被多处代码使用
+        
+        # 实际上，我们需要让 DeepSeekMTPWrapper 能够访问 dec_out (final hidden states)
+        # 最好的方式是让 Transformer 返回 dec_out
+        
+        # 临时修改：为了支持 MTP，我们需要返回 hidden_states
+        # 我们将 hidden_states (dec_out) 作为 tuple 的一部分返回
+        
         if use_cache:
             if router_logits:
-                return logits, attention_weights, present_key_values, router_logits
-            return logits, attention_weights, present_key_values
+                return logits, attention_weights, present_key_values, router_logits, dec_out
+            return logits, attention_weights, present_key_values, dec_out
         else:
             if router_logits:
-                return logits, attention_weights, router_logits
-            return logits, attention_weights
+                return logits, attention_weights, router_logits, dec_out
+            return logits, attention_weights, dec_out
 
 
 class CustomizedSchedule(_LRScheduler):
@@ -2228,6 +2239,8 @@ if __name__ == "__main__":
     logger.info(f"🚀 Training Configuration:")
     logger.info(f"   - MLA (Multi-head Latent Attention): {use_mla}")
     logger.info(f"   - MTP (Multi-Token Prediction): {use_mtp}")
+    if use_mtp:
+        logger.info(f"   - MTP Loss Weight: 0.5 (强化MTP训练)")
     logger.info(f"   - MoE: True (fixed)")
 
     # 0. 常量定义
@@ -2237,8 +2250,10 @@ if __name__ == "__main__":
     val_path = "/workspace/tensorflow_datasets/por_en_test.csv"
     special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
     
-    # 根据是否使用MLA设置不同的checkpoint目录
-    if use_mla:
+    # 根据是否使用MLA和MTP设置不同的checkpoint目录
+    if use_mla and use_mtp:
+        checkpoint_dir = 'checkpoints_ddp_mla_mtp_strong'  # MTP强化训练
+    elif use_mla:
         checkpoint_dir = 'checkpoints_ddp_mla'
     else:
         checkpoint_dir = 'checkpoints_ddp_no_mla'
@@ -2372,7 +2387,7 @@ if __name__ == "__main__":
             max_position_embeddings=max_length,
             use_moe=use_moe,
             moe_config=moe_config,
-            mtp_loss_weight=0.1,  # MTP 损失权重
+            mtp_loss_weight=0.5,  # MTP 损失权重 (提升到0.5以充分训练MTP预测头)
         )
         
         # 为现有 Transformer 添加 MTP 功能
