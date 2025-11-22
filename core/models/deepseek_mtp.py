@@ -120,20 +120,30 @@ class DeepSeekMTPLayer(nn.Module):
     ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         """
         实现论文中的 MTP 前向传播：
-        h'_i^k = M_k[RMSNorm(h_i^{k-1}); RMSNorm(Emb(t_{i+k}))]
-        h_{1:T-k}^k = TRM_k(h'_{1:T-k})
-        P_{i+k+1}^k = OutHead(h_i^k)
+        
+        公式：
+            h'_i^k = M_k[RMSNorm(h_i^{k-1}); RMSNorm(Emb(t_{i+k}))]
+            h_{1:T-k}^k = TRM_k(h'_{1:T-k})
+            P_{i+k+1}^k = OutHead(h_i^k)
+        
+        对应图片中的流程：
+            1. h^{k-1} 和 Emb(t_{i+k}) 分别经过 RMSNorm
+            2. 拼接后经过 Linear Projection (M_k)
+            3. 通过 Transformer Block (TRM_k)
+            4. 通过 Output Head 生成预测
         
         Args:
             input_ids: 输入 token IDs（可选）
             positions: 位置信息 [batch_size, seq_len]
             previous_hidden_states: 上一层的隐藏状态 h^{k-1} [batch_size, seq_len, hidden_size]
+                                   （因果链传递：来自主模型或上一个 MTP Module）
             inputs_embeds: 当前输入的 embedding Emb(t_{i+k}) [batch_size, seq_len, hidden_size]
-            spec_step_index: 推测步骤索引
+                          （Teacher Forcing：使用 ground truth token 的 embedding）
+            spec_step_index: 推测步骤索引 k
         
         Returns:
-            hidden_states: 处理后的隐藏状态 h^k
-            mtp_logits: 多 token 预测的 logits 列表
+            hidden_states: 处理后的隐藏状态 h^k（传递给下一个 MTP Module，形成因果链）
+            mtp_logits: 多 token 预测的 logits 列表 P^k
         """
         # 掩码位置 0 的输入（MTP 不需要）
         inputs_embeds = inputs_embeds.clone()
@@ -323,24 +333,49 @@ class DeepSeekMTPWrapper(nn.Module):
             # 3. 全序列 MTP 预测 (Whole Sequence Training)
             # 我们对序列中的每个位置都进行预测，而不仅仅是最后一个位置
             
+            # ============================================================
+            # 📌 Causal Chain（因果链）实现
+            # ============================================================
+            # 根据 DeepSeek V3 论文，MTP 模块形成因果链：
+            # Main Model → MTP Module 1 → MTP Module 2 → ...
+            #    h⁰            h¹              h²
+            #              (Next² Token)  (Next³ Token)
+            #
+            # 每个 MTP Module 的输出 h^k 会传递给下一个 Module 作为输入
+            # 形成递归的预测链，实现多步预测
+            # ============================================================
+            
             # 递归预测未来 K 个 token
             all_mtp_logits = []
+            # ✅ 因果链起点：主模型的最后一层输出（图中"从最后一层传出来"）
             current_hidden_states = hidden_states
             
-            # 循环预测每一层
+            # 循环预测每一层（因果链传递）
             for i in range(self.mtp_config.num_nextn_predict_layers):
                 try:
-                    # 第一层 MTP 预测
-                    # 输入: h_t, emb_t
-                    # 输出: h'_{t+1}, logits_{t+1} (预测 x_{t+2})
+                    # ============================================================
+                    # 📌 MTP Module k 的处理
+                    # ============================================================
+                    # 输入：
+                    #   - hidden_states: h^{k-1}（上一层的输出，因果链传递）
+                    #   - inputs_embeds: Emb(t_{i+k})（当前位置的 embedding）
+                    # 
+                    # 输出：
+                    #   - current_hidden_states: h^k（传递给下一层，因果链延续）
+                    #   - layer_mtp_logits: P^k（预测 t_{i+k+1}）
+                    #
+                    # 公式：h^k = TRM_k([RMSNorm(h^{k-1}); RMSNorm(Emb(t_{i+k}))])
+                    # ============================================================
                     
                     current_hidden_states, layer_mtp_logits = self.mtp_module(
                         input_ids=None,
                         positions=positions,
-                        hidden_states=current_hidden_states,
-                        inputs_embeds=inputs_embeds, # 使用当前输入的 embedding
+                        hidden_states=current_hidden_states,  # ← 因果链：上一层的输出
+                        inputs_embeds=inputs_embeds,          # ← Teacher Forcing 的 ground truth
                         spec_step_idx=i
                     )
+                    # ✅ current_hidden_states 被更新为当前层的输出
+                    # ✅ 将在下一次循环中作为输入，实现因果链传递
                     
                     # layer_mtp_logits 是一个 list
                     if isinstance(layer_mtp_logits, list):

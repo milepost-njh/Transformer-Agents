@@ -187,6 +187,163 @@ h_{1:T-k}^k = TRM_k(h'_{1:T-k})  ← 使用完整版 EncoderLayer
 P_{i+k+1}^k = OutHead(h_i^k)
 ```
 
+## Causal Chain（因果链）实现
+
+### 📊 什么是 Causal Chain？
+
+根据 DeepSeek V3 论文和架构图，**Causal Chain（因果链）** 是指 token 预测的因果流动链。每个 MTP Module 的输出会传递给下一个 MTP Module，形成递归的预测链。
+
+### 🔗 论文中的 Causal Chain
+
+```
+Main Model:     t₁,t₂,t₃,t₄ → 预测 t₂,t₃,t₄,t₅  (Next Token)
+                      ↓ (从最后一层传出来 - 蓝色字标注)
+MTP Module 1:   t₂,t₃,t₄,t₅ → 预测 t₃,t₄,t₅,t₆  (Next² Token)
+                      ↓ (hidden states 传递 - 因果链)
+MTP Module 2:   t₃,t₄,t₅,t₆ → 预测 t₄,t₅,t₆,t₇  (Next³ Token)
+                      ↓
+                    ...
+```
+
+**关键特点**：
+- ✅ 每个 MTP Module 依赖于上一个 Module 的输出
+- ✅ 形成递归的预测链：Next → Next² → Next³ ...
+- ✅ 所有 MTP 损失都能回传到主模型的所有层
+
+### 💻 代码中的 Causal Chain 实现
+
+#### 1. 因果链的初始化（第 328 行）
+
+```python
+# 因果链起点：主模型的最后一层输出
+current_hidden_states = hidden_states  # ← 来自主模型的 Transformer Block × L
+```
+
+**对应图中**：蓝色字标注的"从最后一层传出来"
+
+#### 2. 因果链的传递（第 337-342 行）
+
+```python
+for i in range(self.mtp_config.num_nextn_predict_layers):
+    # ✅ 关键：每次迭代使用上一层的输出
+    current_hidden_states, layer_mtp_logits = self.mtp_module(
+        input_ids=None,
+        positions=positions,
+        hidden_states=current_hidden_states,  # ← 输入：上一层的输出（因果链传递）
+        inputs_embeds=inputs_embeds,
+        spec_step_idx=i
+    )
+    # current_hidden_states 被更新为当前层的输出 ← 传递给下一层
+```
+
+**因果链流程**：
+1. **i=0 (MTP Module 1)**:
+   - 输入：`hidden_states` (主模型输出 h⁰)
+   - 输出：`current_hidden_states` (MTP Module 1 输出 h¹)
+   - 预测：Next² Token
+
+2. **i=1 (MTP Module 2)**:
+   - 输入：`current_hidden_states` (h¹) ← 因果链传递！
+   - 输出：`current_hidden_states` (MTP Module 2 输出 h²)
+   - 预测：Next³ Token
+
+3. **以此类推...**
+
+### 📐 数学表示
+
+根据论文公式，因果链的数学表示：
+
+```
+h⁰ = MainModel(t₁, t₂, ..., tₙ)           ← 主模型输出
+
+h¹ = MTP₁(h⁰, Emb(t₂, t₃, ..., tₙ₊₁))    ← MTP Module 1（使用 h⁰）
+P¹ = OutHead(h¹)                           ← 预测 t₃, t₄, ..., tₙ₊₂
+
+h² = MTP₂(h¹, Emb(t₃, t₄, ..., tₙ₊₂))    ← MTP Module 2（使用 h¹）← 因果链！
+P² = OutHead(h²)                           ← 预测 t₄, t₅, ..., tₙ₊₃
+
+hᵏ = MTPₖ(hᵏ⁻¹, Emb(tₖ₊₁, ..., tₙ₊ₖ))    ← MTP Module k（使用 hᵏ⁻¹）
+Pᵏ = OutHead(hᵏ)                           ← 预测 tₖ₊₂, ..., tₙ₊ₖ₊₁
+```
+
+**关键**：`hᵏ` 依赖于 `hᵏ⁻¹`，形成因果链！
+
+### 🎯 代码中的关键变量
+
+| 变量名 | 含义 | 在因果链中的作用 |
+|--------|------|-----------------|
+| `hidden_states` | 主模型输出 (h⁰) | 因果链的**起点** |
+| `current_hidden_states` | 当前层的输入/输出 | 因果链的**传递载体** |
+| `layer_mtp_logits` | 每层的预测 logits | 因果链的**预测结果** |
+| `spec_step_idx` | MTP 层索引 (k) | 标识因果链的**第几层** |
+
+### 🔄 因果链的梯度回传
+
+图中蓝色字说明：**"从最后一层传出来"** → 梯度可以回传到所有 Transformer Block
+
+```python
+# 前向传播（因果链向前）
+Main Model → MTP Module 1 → MTP Module 2 → ...
+   ↓            ↓              ↓
+  L_main      L¹_MTP         L²_MTP
+
+# 反向传播（梯度回传 - 因果链向后）
+Main Model ← MTP Module 1 ← MTP Module 2 ← ...
+   ↑            ↑              ↑
+  ∇L_main     ∇L¹_MTP        ∇L²_MTP
+
+# 总损失
+Loss = L_main + α₁ × L¹_MTP + α₂ × L²_MTP + ...
+```
+
+**梯度回传的优势**：
+- ✅ MTP 的损失梯度会回传到主模型的**所有层**
+- ✅ **最大程度覆盖**主模型的所有神经元（图中蓝色字强调）
+- ✅ 帮助主模型学习更好的表示
+- ✅ 多任务学习：主任务 + MTP 辅助任务
+
+### 📌 Causal Chain 代码位置
+
+1. **起点**：`deepseek_mtp.py` 第 328 行
+   ```python
+   current_hidden_states = hidden_states  # ← 因果链起点
+   ```
+
+2. **传递**：`deepseek_mtp.py` 第 337-342 行
+   ```python
+   current_hidden_states, layer_mtp_logits = self.mtp_module(
+       hidden_states=current_hidden_states,  # ← 因果链传递
+       ...
+   )
+   ```
+
+3. **处理**：`deepseek_mtp.py` 第 113-187 行（`DeepSeekMTPLayer.forward`）
+   ```python
+   # 步骤1: RMSNorm(h^{k-1}) 和 RMSNorm(Emb(t_{i+k}))
+   # 步骤2: 拼接
+   # 步骤3: 线性投影 M_k
+   # 步骤4: Transformer Block TRM_k
+   # 步骤5: Output Head
+   ```
+
+### 🎓 Teacher Forcing 与 Causal Chain
+
+在训练时，MTP 使用 **Teacher Forcing** 模式：
+
+```python
+inputs_embeds = self.embed_tokens(tgt_ids)  # ← 使用 ground truth
+```
+
+**作用**：
+- ✅ 使用真实的 token embedding（而非预测的）
+- ✅ 提供更准确的上下文信息
+- ✅ 加速训练收敛
+- ✅ 避免误差累积
+
+**因果链 + Teacher Forcing**：
+- 因果链：`hidden_states` 的递归传递（h⁰ → h¹ → h²）
+- Teacher Forcing：`inputs_embeds` 使用 ground truth
+
 ## 总结
 
 | 方面 | 说明 |
@@ -197,6 +354,7 @@ P_{i+k+1}^k = OutHead(h_i^k)
 | **配置简单度** | ⭐⭐⭐⭐⭐ 开箱即用 |
 | **代码一致性** | ⭐⭐⭐⭐⭐ 与主模型完全一致 |
 | **论文符合度** | ⭐⭐⭐⭐⭐ 完全符合 |
+| **因果链实现** | ⭐⭐⭐⭐⭐ 完整实现递归预测链 |
 
 **最终方案完美！✨**
 
