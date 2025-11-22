@@ -2,6 +2,13 @@
 """
 DeepSeek MTP (Multi-Token Prediction) 模型实现
 作为 Transformer 的辅助预测模块，用于多 token 预测和推测解码
+
+直接复用 train_ddp_latest.py 中的完整版 EncoderLayer：
+- 支持 RoPE（Rotary Position Embedding）
+- 支持 MLA（Multi-head Latent Attention）
+- 支持 MoE（Mixture of Experts）
+- 使用 RMSNorm（而非 LayerNorm）
+- 符合论文要求的 Transformer Block 结构（Self-Attention + FFN）
 """
 
 import torch
@@ -13,6 +20,16 @@ from loguru import logger
 
 from core.normalization import RMSNorm
 from core.models.modeling_deepseek import DeepseekV3MoE
+
+# 直接导入 EncoderLayer（Self-Attention + FFN）
+# 使用 train_ddp_latest.py 中的完整版本（支持 RoPE、MLA、MoE、RMSNorm）
+try:
+    from train_ddp_latest import EncoderLayer as AdvancedEncoderLayer
+    _ENCODER_LAYER_AVAILABLE = True
+    logger.info("✅ 成功导入 train_ddp_latest.EncoderLayer（支持 RoPE/MLA/MoE）")
+except ImportError:
+    _ENCODER_LAYER_AVAILABLE = False
+    logger.warning("⚠️ 无法导入 train_ddp_latest.EncoderLayer，将使用 PyTorch 内置的 TransformerEncoderLayer")
 
 
 class DeepSeekMTPConfig:
@@ -27,6 +44,9 @@ class DeepSeekMTPConfig:
         use_moe: bool = False,
         moe_config: Optional[Any] = None,
         mtp_loss_weight: float = 0.1,  # MTP 损失权重
+        num_heads: int = 8,  # Transformer Block 的注意力头数
+        dff: int = 2048,  # FFN 中间层维度
+        dropout_rate: float = 0.1,  # Dropout 比率
     ):
         self.hidden_size = hidden_size
         self.num_nextn_predict_layers = num_nextn_predict_layers
@@ -36,6 +56,9 @@ class DeepSeekMTPConfig:
         self.use_moe = use_moe
         self.moe_config = moe_config
         self.mtp_loss_weight = mtp_loss_weight
+        self.num_heads = num_heads
+        self.dff = dff
+        self.dropout_rate = dropout_rate
 
 
 class DeepSeekMTPLayer(nn.Module):
@@ -49,21 +72,42 @@ class DeepSeekMTPLayer(nn.Module):
         self.enorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.hnorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         
-        # 特征融合投影
+        # 特征融合投影（将拼接后的 2d 维度映射回 d 维度）
         self.eh_proj = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
         
-        # 简化的处理层
-        if config.use_moe and config.moe_config is not None:
+        # MTP Transformer Block（论文中的单层 Transformer）
+        # 直接使用 train_ddp_latest.py 中的完整版 EncoderLayer
+        if _ENCODER_LAYER_AVAILABLE:
+            # 使用完整版 EncoderLayer（支持 RoPE、MLA、MoE、RMSNorm）
+            logger.info(f"MTP Layer {layer_idx} 使用 AdvancedEncoderLayer (RoPE/MLA/MoE/RMSNorm)")
+            self.mtp_block = AdvancedEncoderLayer(
+                d_model=config.hidden_size,
+                num_heads=config.num_heads,
+                dff=config.dff,
+                rate=config.dropout_rate,
+                use_rope=False,      # MTP 内部不需要 RoPE（主模型已应用）
+                use_moe=config.use_moe,
+                moe_config=config.moe_config,
+                use_mla=False,       # MTP 使用标准注意力即可
+            )
+        elif config.use_moe and config.moe_config is not None:
+            # 如果配置了 MoE，使用 MoE Block（实验性）
+            logger.warning(f"MTP Layer {layer_idx} 使用 MoE Block（实验性，不符合论文标准实现）")
             self.mtp_block = DeepseekV3MoE(config.moe_config)
         else:
-            # 简单的 FFN
-            self.mtp_block = nn.Sequential(
-                nn.Linear(config.hidden_size, config.hidden_size * 4),
-                nn.SiLU(),
-                nn.Linear(config.hidden_size * 4, config.hidden_size)
+            # 备用方案：使用 PyTorch 内置 TransformerEncoderLayer
+            logger.info(f"MTP Layer {layer_idx} 使用 PyTorch 内置 TransformerEncoderLayer")
+            self.mtp_block = nn.TransformerEncoderLayer(
+                d_model=config.hidden_size,
+                nhead=config.num_heads,
+                dim_feedforward=config.dff,
+                dropout=config.dropout_rate,
+                activation='relu',
+                batch_first=True,
+                norm_first=False,  # Post-norm（先残差后归一化）
             )
         
-        # 每个MTP层只有一个预测头
+        # 每个MTP层只有一个预测头（参数共享）
         self.mtp_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
     def forward(
@@ -75,8 +119,20 @@ class DeepSeekMTPLayer(nn.Module):
         spec_step_index: int = 0,
     ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         """
-        返回:
-            hidden_states: 处理后的隐藏状态
+        实现论文中的 MTP 前向传播：
+        h'_i^k = M_k[RMSNorm(h_i^{k-1}); RMSNorm(Emb(t_{i+k}))]
+        h_{1:T-k}^k = TRM_k(h'_{1:T-k})
+        P_{i+k+1}^k = OutHead(h_i^k)
+        
+        Args:
+            input_ids: 输入 token IDs（可选）
+            positions: 位置信息 [batch_size, seq_len]
+            previous_hidden_states: 上一层的隐藏状态 h^{k-1} [batch_size, seq_len, hidden_size]
+            inputs_embeds: 当前输入的 embedding Emb(t_{i+k}) [batch_size, seq_len, hidden_size]
+            spec_step_index: 推测步骤索引
+        
+        Returns:
+            hidden_states: 处理后的隐藏状态 h^k
             mtp_logits: 多 token 预测的 logits 列表
         """
         # 掩码位置 0 的输入（MTP 不需要）
@@ -84,26 +140,40 @@ class DeepSeekMTPLayer(nn.Module):
         if positions is not None:
              inputs_embeds[positions == 0] = 0
         
-        # 归一化
-        inputs_embeds = self.enorm(inputs_embeds)
-        previous_hidden_states = self.hnorm(previous_hidden_states)
+        # 步骤1: 归一化 - RMSNorm(h^{k-1}) 和 RMSNorm(Emb(t_{i+k}))
+        inputs_embeds_norm = self.enorm(inputs_embeds)
+        previous_hidden_states_norm = self.hnorm(previous_hidden_states)
         
-        # 特征融合
-        hidden_states = self.eh_proj(
-            torch.cat([inputs_embeds, previous_hidden_states], dim=-1)
-        )
+        # 步骤2: 拼接 - [RMSNorm(h^{k-1}); RMSNorm(Emb(t_{i+k}))]
+        concat_features = torch.cat([previous_hidden_states_norm, inputs_embeds_norm], dim=-1)
         
-        # 通过 MTP 块
-        if self.config.use_moe and self.config.moe_config is not None:
+        # 步骤3: 线性投影 M_k - 将 2d 维度映射回 d 维度
+        hidden_states = self.eh_proj(concat_features)
+        
+        # 步骤4: 通过 Transformer Block - TRM_k(h')
+        if _ENCODER_LAYER_AVAILABLE:
+            # 使用 train_ddp_latest.py 的 AdvancedEncoderLayer
+            # forward(x, src_mask, past_key_value, use_cache)
+            # 返回: out2 或 (out2, router_logits) 或 (out2, present_key_value) 等
+            mtp_output = self.mtp_block(hidden_states, src_mask=None, use_cache=False)
+            
+            # 处理返回值（可能包含 router_logits）
+            if isinstance(mtp_output, tuple):
+                hidden_states = mtp_output[0]  # 第一个总是 hidden states
+            else:
+                hidden_states = mtp_output
+        elif self.config.use_moe and self.config.moe_config is not None:
+            # MoE 分支（实验性，不推荐）
             mtp_output = self.mtp_block(hidden_states)
             if isinstance(mtp_output, tuple):
                 hidden_states, _ = mtp_output
             else:
                 hidden_states = mtp_output
         else:
-            hidden_states = self.mtp_block(hidden_states)
+            # PyTorch 内置 TransformerEncoderLayer
+            hidden_states = self.mtp_block(hidden_states, src_mask=None)
         
-        # 每个MTP层生成一个logits
+        # 步骤5: 输出预测 - OutHead(h^k) -> P^k
         logits = self.mtp_head(hidden_states)
         
         return hidden_states, [logits]  # 包装成列表保持接口一致
