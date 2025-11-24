@@ -223,3 +223,134 @@ MTP-2:      t4   t5   t6   t7    (Next³ Token) - 全序列并行计算
 - `core/models/deepseek_mtp.py` - MTP 训练实现
 - `inference/inference_ddp.py` - MTP 推理实现（推测解码）
 - `train_ddp_latest.py` - 完整训练流程
+
+## 推理日志
+
+```shell
+root@iv-ydg6wcq3ggay8n6dmn75:/workspace# CUDA_VISIBLE_DEVICES=1 python inference/inference_ddp.py
+2025-11-24 02:00:44.786 | INFO     | __main__:main:676 - ================================================================================
+2025-11-24 02:00:44.786 | INFO     | __main__:main:677 - 🚀 MTP推理对比实验: 标准解码 vs MTP推测解码
+2025-11-24 02:00:44.786 | INFO     | __main__:main:678 - ================================================================================
+2025-11-24 02:00:44.786 | INFO     | __main__:main:679 - 📦 Checkpoint: checkpoints_ddp_mla_mtp_strong/mid_e12_s2664.pt
+2025-11-24 02:00:44.787 | INFO     | __main__:main:680 - 
+2025-11-24 02:00:44.816 | INFO     | __main__:main:698 - 📝 测试样本数: 3
+
+2025-11-24 02:00:44.816 | INFO     | __main__:main:701 - ================================================================================
+2025-11-24 02:00:44.816 | INFO     | __main__:main:702 - 1️⃣  标准自回归解码 (每次预测1个token)
+2025-11-24 02:00:44.816 | INFO     | __main__:main:703 - ================================================================================
+2025-11-24 02:00:52.542 | WARNING  | __main__:load_checkpoint:161 - ⚠️ 自动适配：移除MTP前缀（训练时use_mtp=True，推理时use_mtp=False）
+2025-11-24 02:00:53.214 | INFO     | __main__:load_checkpoint:202 - ✅ Checkpoint loaded: mid_e12_s2664.pt (E12)
+2025-11-24 02:00:56.486 | INFO     | __main__:run_inference_batch:575 - --------------------------------------------------------------------------------
+2025-11-24 02:00:56.487 | INFO     | __main__:run_inference_batch:576 - Sample 1/3
+2025-11-24 02:00:56.487 | INFO     | __main__:run_inference_batch:577 - 📥 Input:  Eu gosto de aprender idiomas.
+2025-11-24 02:00:57.780 | SUCCESS  | __main__:run_inference_batch:616 - 📤 Output: I like learning languages.
+2025-11-24 02:00:57.781 | INFO     | __main__:run_inference_batch:617 - ⏱️  Time: 1.294s
+2025-11-24 02:00:57.781 | INFO     | __main__:run_inference_batch:575 - --------------------------------------------------------------------------------
+2025-11-24 02:00:57.781 | INFO     | __main__:run_inference_batch:576 - Sample 2/3
+2025-11-24 02:00:57.781 | INFO     | __main__:run_inference_batch:577 - 📥 Input:  A inteligência artificial está mudando a forma como vivemos, desde a saúde até o transporte.
+2025-11-24 02:00:58.315 | SUCCESS  | __main__:run_inference_batch:616 - 📤 Output: Artificial intelligence is moving as well as we lived, since the health.
+2025-11-24 02:00:58.315 | INFO     | __main__:run_inference_batch:617 - ⏱️  Time: 0.534s
+2025-11-24 02:00:58.315 | INFO     | __main__:run_inference_batch:575 - --------------------------------------------------------------------------------
+2025-11-24 02:00:58.315 | INFO     | __main__:run_inference_batch:576 - Sample 3/3
+2025-11-24 02:00:58.315 | INFO     | __main__:run_inference_batch:577 - 📥 Input:  Neste lindo dia de verão, as crianças brincam felizes no parque.
+2025-11-24 02:00:58.786 | SUCCESS  | __main__:run_inference_batch:616 - 📤 Output: The beautiful summer day, the children are playing happy in the park.
+2025-11-24 02:00:58.786 | INFO     | __main__:run_inference_batch:617 - ⏱️  Time: 0.471s
+2025-11-24 02:00:58.786 | INFO     | __main__:run_inference_batch:634 - ================================================================================
+2025-11-24 02:00:58.786 | INFO     | __main__:run_inference_batch:635 - ⏱️  Total time: 2.298s
+2025-11-24 02:00:58.786 | INFO     | __main__:run_inference_batch:636 - 
+2025-11-24 02:00:59.072 | INFO     | __main__:main:739 - ================================================================================
+2025-11-24 02:00:59.072 | INFO     | __main__:main:740 - 2️⃣  MTP推测解码 (预测多个token并验证)
+2025-11-24 02:00:59.072 | INFO     | __main__:main:741 - ================================================================================
+2025-11-24 02:01:01.687 | INFO     | core.models.deepseek_mtp:<module>:29 - ✅ 成功导入 train_ddp_latest.EncoderLayer（支持 RoPE/MLA/MoE）
+2025-11-24 02:01:01.691 | INFO     | core.models.deepseek_mtp:__init__:82 - MTP Layer 0 使用 AdvancedEncoderLayer (RoPE/MLA/MoE/RMSNorm)
+2025-11-24 02:01:01.888 | INFO     | core.models.deepseek_mtp:__init__:82 - MTP Layer 1 使用 AdvancedEncoderLayer (RoPE/MLA/MoE/RMSNorm)
+2025-11-24 02:01:08.333 | INFO     | __main__:load_checkpoint:202 - ✅ Checkpoint loaded: mid_e12_s2664.pt (E12)
+2025-11-24 02:01:10.037 | INFO     | __main__:run_inference_batch:575 - --------------------------------------------------------------------------------
+2025-11-24 02:01:10.037 | INFO     | __main__:run_inference_batch:576 - Sample 1/3
+2025-11-24 02:01:10.037 | INFO     | __main__:run_inference_batch:577 - 📥 Input:  Eu gosto de aprender idiomas.
+2025-11-24 02:01:10.121 | INFO     | core.models.deepseek_mtp:forward:394 - ✅ MTP全序列训练已修复: 输入形状=torch.Size([1, 1, 512]), 预测层数=2
+2025-11-24 02:01:10.590 | SUCCESS  | __main__:run_inference_batch:616 - 📤 Output: I like learning languages.
+2025-11-24 02:01:10.590 | INFO     | __main__:run_inference_batch:617 - ⏱️  Time: 0.552s
+2025-11-24 02:01:10.590 | INFO     | __main__:run_inference_batch:620 - 📊 MTP Stats: 0/10 tokens accepted (0.0%), 5 speculations
+2025-11-24 02:01:10.590 | INFO     | __main__:run_inference_batch:575 - --------------------------------------------------------------------------------
+2025-11-24 02:01:10.590 | INFO     | __main__:run_inference_batch:576 - Sample 2/3
+2025-11-24 02:01:10.590 | INFO     | __main__:run_inference_batch:577 - 📥 Input:  A inteligência artificial está mudando a forma como vivemos, desde a saúde até o transporte.
+2025-11-24 02:01:12.500 | SUCCESS  | __main__:run_inference_batch:616 - 📤 Output: Artificial intelligence is moving as well as we lived, since the health.
+2025-11-24 02:01:12.501 | INFO     | __main__:run_inference_batch:617 - ⏱️  Time: 1.910s
+2025-11-24 02:01:12.501 | INFO     | __main__:run_inference_batch:620 - 📊 MTP Stats: 1/30 tokens accepted (3.3%), 15 speculations
+2025-11-24 02:01:12.501 | INFO     | __main__:run_inference_batch:575 - --------------------------------------------------------------------------------
+2025-11-24 02:01:12.501 | INFO     | __main__:run_inference_batch:576 - Sample 3/3
+2025-11-24 02:01:12.501 | INFO     | __main__:run_inference_batch:577 - 📥 Input:  Neste lindo dia de verão, as crianças brincam felizes no parque.
+2025-11-24 02:01:14.262 | SUCCESS  | __main__:run_inference_batch:616 - 📤 Output: The beautiful summer day, the children are playing happy in the park.
+2025-11-24 02:01:14.262 | INFO     | __main__:run_inference_batch:617 - ⏱️  Time: 1.761s
+2025-11-24 02:01:14.262 | INFO     | __main__:run_inference_batch:620 - 📊 MTP Stats: 0/28 tokens accepted (0.0%), 14 speculations
+2025-11-24 02:01:14.262 | INFO     | __main__:run_inference_batch:634 - ================================================================================
+2025-11-24 02:01:14.262 | INFO     | __main__:run_inference_batch:635 - ⏱️  Total time: 4.224s
+2025-11-24 02:01:14.262 | INFO     | __main__:run_inference_batch:636 - 
+2025-11-24 02:01:14.262 | INFO     | __main__:main:773 - ================================================================================
+2025-11-24 02:01:14.262 | INFO     | __main__:main:774 - 📊 对比结果
+2025-11-24 02:01:14.263 | INFO     | __main__:main:775 - ================================================================================
+2025-11-24 02:01:14.263 | INFO     | __main__:main:778 - 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-24 02:01:14.263 | INFO     | __main__:main:779 - 样本 1:
+2025-11-24 02:01:14.263 | INFO     | __main__:main:780 -   🇵🇹 输入: Eu gosto de aprender idiomas.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:781 -   🇬🇧 标准解码: I like learning languages.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:782 -   🇬🇧 MTP解码:  I like learning languages.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:785 -   ✅ 输出相同
+2025-11-24 02:01:14.263 | INFO     | __main__:main:791 -   📊 MTP: 0/10 tokens被接受 (接受率 0.0%), 5次推测
+2025-11-24 02:01:14.263 | INFO     | __main__:main:778 - 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-24 02:01:14.263 | INFO     | __main__:main:779 - 样本 2:
+2025-11-24 02:01:14.263 | INFO     | __main__:main:780 -   🇵🇹 输入: A inteligência artificial está mudando a forma como vivemos, desde a saúde até o transporte.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:781 -   🇬🇧 标准解码: Artificial intelligence is moving as well as we lived, since the health.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:782 -   🇬🇧 MTP解码:  Artificial intelligence is moving as well as we lived, since the health.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:785 -   ✅ 输出相同
+2025-11-24 02:01:14.263 | INFO     | __main__:main:791 -   📊 MTP: 1/30 tokens被接受 (接受率 3.3%), 15次推测
+2025-11-24 02:01:14.263 | INFO     | __main__:main:778 - 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-24 02:01:14.263 | INFO     | __main__:main:779 - 样本 3:
+2025-11-24 02:01:14.263 | INFO     | __main__:main:780 -   🇵🇹 输入: Neste lindo dia de verão, as crianças brincam felizes no parque.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:781 -   🇬🇧 标准解码: The beautiful summer day, the children are playing happy in the park.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:782 -   🇬🇧 MTP解码:  The beautiful summer day, the children are playing happy in the park.
+2025-11-24 02:01:14.263 | INFO     | __main__:main:785 -   ✅ 输出相同
+2025-11-24 02:01:14.263 | INFO     | __main__:main:791 -   📊 MTP: 0/28 tokens被接受 (接受率 0.0%), 14次推测
+2025-11-24 02:01:14.263 | INFO     | __main__:main:796 - 
+================================================================================
+2025-11-24 02:01:14.263 | INFO     | __main__:main:797 - 📈 总体统计
+2025-11-24 02:01:14.263 | INFO     | __main__:main:798 - ================================================================================
+2025-11-24 02:01:14.263 | INFO     | __main__:main:800 - ⏱️  时间对比:
+2025-11-24 02:01:14.263 | INFO     | __main__:main:801 -   - 标准解码总时间: 2.298s
+2025-11-24 02:01:14.263 | INFO     | __main__:main:802 -   - MTP解码总时间:  4.224s
+2025-11-24 02:01:14.263 | INFO     | __main__:main:805 -   - 加速比: 0.54x
+2025-11-24 02:01:14.263 | INFO     | __main__:main:812 - 
+📊 MTP统计:
+2025-11-24 02:01:14.263 | INFO     | __main__:main:813 -   - 总推测次数: 34 次
+2025-11-24 02:01:14.263 | INFO     | __main__:main:814 -   - 推测token总数: 68 个
+2025-11-24 02:01:14.263 | INFO     | __main__:main:815 -   - 接受token数: 1 个
+2025-11-24 02:01:14.263 | INFO     | __main__:main:816 -   - 平均接受率: 1.5%
+2025-11-24 02:01:14.263 | INFO     | __main__:main:818 - 
+================================================================================
+2025-11-24 02:01:14.263 | INFO     | __main__:main:819 - 💡 MTP推理原理与分析
+2025-11-24 02:01:14.263 | INFO     | __main__:main:820 - ================================================================================
+2025-11-24 02:01:14.263 | INFO     | __main__:main:821 - 标准解码: 每次预测1个token → 需要N次forward生成N个token
+2025-11-24 02:01:14.263 | INFO     | __main__:main:822 - MTP解码:  每次先用主模型预测1个token，再用MTP预测K个token → 验证MTP预测 → 接受或回退
+2025-11-24 02:01:14.263 | INFO     | __main__:main:826 -          当前配置: 平均每次MTP推测 2.0 个token
+2025-11-24 02:01:14.263 | INFO     | __main__:main:827 -          MTP接受率: 1.5% (推测准确性)
+2025-11-24 02:01:14.263 | INFO     | __main__:main:828 -          理论加速比: 1 + 2.0 * 1.5% = 1.03x
+2025-11-24 02:01:14.263 | INFO     | __main__:main:829 -          实际加速比: 0.54x (受验证开销、样本长度等因素影响)
+2025-11-24 02:01:14.263 | INFO     | __main__:main:830 - 
+2025-11-24 02:01:14.263 | WARNING  | __main__:main:833 - ⚠️  MTP接受率过低，可能的原因：
+2025-11-24 02:01:14.263 | WARNING  | __main__:main:834 -    1. MTP预测头训练不足（最可能）
+2025-11-24 02:01:14.263 | WARNING  | __main__:main:835 -       - 训练时mtp_loss_weight过小，MTP没学到有用模式
+2025-11-24 02:01:14.263 | WARNING  | __main__:main:836 -       - 建议：增加mtp_loss_weight（如0.3-0.5）重新训练
+2025-11-24 02:01:14.263 | WARNING  | __main__:main:837 -    2. MTP特征转换层质量差
+2025-11-24 02:01:14.263 | WARNING  | __main__:main:838 -       - logits_to_embedding/hidden层可能接近随机初始化
+2025-11-24 02:01:14.264 | WARNING  | __main__:main:839 -    3. 当前checkpoint可能主要优化了主任务，MTP是副产品
+2025-11-24 02:01:14.264 | WARNING  | __main__:main:840 - 
+2025-11-24 02:01:14.264 | WARNING  | __main__:main:841 - 💡 改进建议：
+2025-11-24 02:01:14.264 | WARNING  | __main__:main:842 -    - 如果要充分利用MTP加速，需要用更大的mtp_loss_weight重新训练
+2025-11-24 02:01:14.264 | WARNING  | __main__:main:843 -    - 或者使用专门训练的MTP checkpoint
+2025-11-24 02:01:14.264 | WARNING  | __main__:main:844 -    - 当前checkpoint更适合用标准解码
+2025-11-24 02:01:14.264 | INFO     | __main__:main:846 - ================================================================================
+```
+
