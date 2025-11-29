@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """在服务器上运行，保存 MTP 真实数据"""
 import sys, os
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 import torch
