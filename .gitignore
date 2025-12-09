@@ -103,3 +103,10 @@ tok_en/
 tok_pt/
 start_git.sh
 runs_ddp/
+
+# Pretrain and finetune data
+create-dataset/pretrain/data/
+create-dataset/pretrain/checkpoints/
+create-dataset/finetune/test_data/
+create-dataset/finetune/data/
+*.zip
