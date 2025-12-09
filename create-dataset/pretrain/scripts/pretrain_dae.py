@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-预训练脚本 - 去噪自编码（DAE, Denoising Autoencoder）
-参考BART/mBART的预训练方式
+预训练脚本 - UL2 Mixture of Denoisers (Google 2022)
+统一语言学习范式 - 混合3种去噪器（R/S/X）
+
+核心创新：
+1. R-Denoiser (40%): 常规span遮盖，适合理解任务
+2. S-Denoiser (40%): 极端遮盖(50%)，适合生成任务
+3. X-Denoiser (20%): Prefix LM，适合因果推理
+
+优势 vs BART:
+- 统一多种预训练范式（理解+生成+因果）
+- 更强的zero-shot和few-shot能力
+- Google官方验证，T5/PaLM的改进版
 """
 
 import os
@@ -28,82 +38,108 @@ from train_ddp_latest import (
 )
 
 
-class NoiseStrategy:
-    """噪声添加策略（BART风格）"""
+class UL2NoiseStrategy:
+    """
+    UL2 Mixture of Denoisers (Google 2022)
+    统一语言学习范式 - 混合3种去噪器
+    """
     
     @staticmethod
-    def token_masking(token_ids, mask_ratio=0.15, mask_token_id=4):
-        """Token掩码：随机将15%的token替换为<mask>"""
-        noisy_ids = token_ids.copy()
-        num_mask = max(1, int(len(token_ids) * mask_ratio))
-        mask_positions = random.sample(range(len(token_ids)), num_mask)
-        for pos in mask_positions:
-            noisy_ids[pos] = mask_token_id
-        return noisy_ids
-    
-    @staticmethod
-    def token_deletion(token_ids, delete_ratio=0.1):
-        """Token删除：随机删除10%的token"""
-        if len(token_ids) <= 2:  # 保留至少BOS和EOS
-            return token_ids
-        keep_mask = [random.random() > delete_ratio for _ in token_ids]
-        # 确保BOS和EOS保留
-        keep_mask[0] = True
-        keep_mask[-1] = True
-        noisy_ids = [tid for tid, keep in zip(token_ids, keep_mask) if keep]
-        return noisy_ids
-    
-    @staticmethod
-    def text_infilling(token_ids, span_length=3, span_ratio=0.3, mask_token_id=4):
-        """文本填充：随机span被替换为单个mask token"""
-        if len(token_ids) <= span_length + 2:
+    def r_denoiser(token_ids, mask_token_id=4, mean_span_length=3, corruption_rate=0.15):
+        """
+        R-Denoiser (Regular): 常规span遮盖
+        参考T5的Span Corruption，适合自然语言理解任务
+        遮盖率：~15%，平均span长度：3
+        """
+        if len(token_ids) <= 2:
             return token_ids
         
         noisy_ids = []
-        i = 0
-        while i < len(token_ids):
-            if i == 0 or i == len(token_ids) - 1:
-                # 保留BOS和EOS
-                noisy_ids.append(token_ids[i])
-                i += 1
-            elif random.random() < span_ratio:
-                # 创建一个span并替换为mask
-                span_len = random.randint(1, min(span_length, len(token_ids) - i - 1))
+        i = 1  # 跳过BOS
+        end_idx = len(token_ids) - 1  # 保留EOS
+        
+        while i < end_idx:
+            if random.random() < corruption_rate:
+                # 创建span
+                span_len = min(
+                    random.randint(1, mean_span_length * 2),
+                    end_idx - i
+                )
                 noisy_ids.append(mask_token_id)
                 i += span_len
             else:
                 noisy_ids.append(token_ids[i])
                 i += 1
         
+        # 添加BOS和EOS
+        return [token_ids[0]] + noisy_ids + [token_ids[-1]]
+    
+    @staticmethod
+    def s_denoiser(token_ids, mask_token_id=4, corruption_rate=0.5):
+        """
+        S-Denoiser (Sequential): 极端遮盖
+        遮盖率：50%，迫使模型更依赖长距离依赖
+        适合生成任务
+        """
+        if len(token_ids) <= 2:
+            return token_ids
+        
+        noisy_ids = [token_ids[0]]  # BOS
+        
+        for i in range(1, len(token_ids) - 1):
+            if random.random() < corruption_rate:
+                # 有50%概率遮盖
+                if not noisy_ids[-1] == mask_token_id:
+                    noisy_ids.append(mask_token_id)
+            else:
+                noisy_ids.append(token_ids[i])
+        
+        noisy_ids.append(token_ids[-1])  # EOS
         return noisy_ids
     
     @staticmethod
-    def sentence_permutation(token_ids, max_shuffle_distance=3):
-        """句子重排：打乱句子顺序（适用于长文本）"""
-        # 简化版：对于单句，返回原序列
-        return token_ids
+    def x_denoiser(token_ids, prefix_ratio=0.5):
+        """
+        X-Denoiser (eXtreme): Prefix LM
+        给定前缀，预测后缀（类似GPT的因果语言模型）
+        前缀比例：50%
+        """
+        if len(token_ids) <= 2:
+            return token_ids
+        
+        # 计算前缀长度（保留前50%）
+        content_len = len(token_ids) - 2  # 去掉BOS和EOS
+        prefix_len = max(1, int(content_len * prefix_ratio))
+        
+        # 保留BOS + 前缀，后面全部去掉
+        # 在训练时，模型需要预测完整的原句
+        return token_ids[:prefix_len + 1]  # BOS + prefix
     
     @staticmethod
-    def apply_noise(token_ids, noise_type="mixed", mask_token_id=4):
-        """应用噪声"""
-        if noise_type == "mask":
-            return NoiseStrategy.token_masking(token_ids, mask_token_id=mask_token_id)
-        elif noise_type == "delete":
-            return NoiseStrategy.token_deletion(token_ids)
-        elif noise_type == "infill":
-            return NoiseStrategy.text_infilling(token_ids, mask_token_id=mask_token_id)
-        elif noise_type == "mixed":
-            # 随机选择一种噪声类型
-            noise_type = random.choice(["mask", "delete", "infill"])
-            return NoiseStrategy.apply_noise(token_ids, noise_type, mask_token_id)
+    def apply_ul2_noise(token_ids, mask_token_id=4):
+        """
+        UL2: 随机选择一种去噪器
+        - R-Denoiser: 40% (常规任务)
+        - S-Denoiser: 40% (生成任务)
+        - X-Denoiser: 20% (因果LM)
+        """
+        rand = random.random()
+        
+        if rand < 0.4:
+            # R-Denoiser
+            return UL2NoiseStrategy.r_denoiser(token_ids, mask_token_id)
+        elif rand < 0.8:
+            # S-Denoiser
+            return UL2NoiseStrategy.s_denoiser(token_ids, mask_token_id)
         else:
-            return token_ids
+            # X-Denoiser
+            return UL2NoiseStrategy.x_denoiser(token_ids)
 
 
 class PretrainDataset(Dataset):
     """预训练数据集"""
     
-    def __init__(self, data_file, tokenizer, max_length=64, noise_type="mixed"):
+    def __init__(self, data_file, tokenizer, max_length=64, noise_type="ul2"):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.noise_type = noise_type
@@ -119,6 +155,7 @@ class PretrainDataset(Dataset):
                     self.sentences.append(line)
         
         logger.info(f"加载了 {len(self.sentences)} 个句子")
+        logger.info(f"使用UL2 Mixture of Denoisers: R(40%) + S(40%) + X(20%)")
     
     def __len__(self):
         return len(self.sentences)
@@ -137,10 +174,9 @@ class PretrainDataset(Dataset):
         # 原始序列（目标）
         clean_ids = token_ids.copy()
         
-        # 添加噪声（输入）
-        noisy_ids = NoiseStrategy.apply_noise(
-            token_ids, 
-            noise_type=self.noise_type,
+        # 添加噪声（输入）- 使用UL2 Mixture of Denoisers
+        noisy_ids = UL2NoiseStrategy.apply_ul2_noise(
+            token_ids,
             mask_token_id=self.mask_token_id
         )
         
@@ -234,7 +270,7 @@ def pretrain(
     log_every=100,
 ):
     """预训练主循环"""
-    logger.info("开始预训练...")
+    logger.info("开始UL2预训练 (Mixture of Denoisers)...")
     
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -357,16 +393,17 @@ def main():
     parser.add_argument("--batch-size", type=int, default=32, help="批大小")
     parser.add_argument("--max-length", type=int, default=64, help="最大序列长度")
     parser.add_argument("--lr", type=float, default=1e-4, help="学习率")
-    parser.add_argument("--noise-type", default="mixed", 
-                       choices=["mask", "delete", "infill", "mixed"],
-                       help="噪声类型")
+    parser.add_argument("--noise-type", default="ul2", 
+                       choices=["ul2"],
+                       help="噪声类型: ul2 (UL2 Mixture of Denoisers)")
     parser.add_argument("--checkpoint-dir", default="../checkpoints/pretrain",
                        help="Checkpoint目录")
     
     args = parser.parse_args()
     
     logger.info("=" * 60)
-    logger.info("预训练脚本 - 去噪自编码")
+    logger.info("预训练脚本 - UL2 Mixture of Denoisers (Google 2022)")
+    logger.info("混合3种去噪器: R-Denoiser(40%) + S-Denoiser(40%) + X-Denoiser(20%)")
     logger.info("=" * 60)
     
     # 设备

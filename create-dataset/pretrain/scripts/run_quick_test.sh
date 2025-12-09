@@ -4,7 +4,8 @@
 set -e  # 遇到错误立即退出
 
 echo "=========================================="
-echo "预训练+微调 快速测试"
+echo "UL2预训练 快速测试 (Google 2022)"
+echo "Mixture of Denoisers: R/S/X三种去噪器"
 echo "预计时间: 1小时"
 echo "=========================================="
 
@@ -37,7 +38,7 @@ python3 pretrain_dae.py \
     --batch-size 16 \
     --max-length 64 \
     --lr 1e-4 \
-    --noise-type mixed \
+    --noise-type ul2 \
     --checkpoint-dir ../checkpoints/pretrain
 
 # 检查checkpoint是否生成
