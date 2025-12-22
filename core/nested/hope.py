@@ -236,6 +236,226 @@ class HOPEModel(nn.Module):
         return logits
 
 
+@torch.jit.script
+def hope_cross_scan(k_enc, v_enc, q_dec, initial_state, eta, beta):
+    """
+    HOPE cross-attention 记忆更新的融合内核。
+    
+    k_enc, v_enc: (Batch, Seq_Enc, Head_Dim) - 来自 encoder
+    q_dec: (Batch, Seq_Dec, Head_Dim) - 来自 decoder
+    initial_state: (Batch, Head_Dim, Head_Dim)
+    eta: 内部循环的学习率
+    beta: 遗忘因子
+    """
+    b, t_enc, d = k_enc.shape
+    t_dec = q_dec.shape[1]
+    
+    # 初始化状态（使用 encoder 的 k, v 建立记忆）
+    state = initial_state  # (B, D, D)
+    outputs = torch.jit.annotate(torch.Tensor, torch.zeros(b, t_dec, d, device=q_dec.device))
+    
+    # 第一步：用 encoder 的 k, v 建立记忆
+    for i in range(t_enc):
+        k_t = k_enc[:, i].unsqueeze(2)  # (B, D, 1)
+        v_t = v_enc[:, i].unsqueeze(2)
+        
+        # 预测：v_pred = M * k
+        v_pred = torch.bmm(state, k_t)
+        
+        # 误差：e = v - v_pred
+        error = v_t - v_pred
+        
+        # 梯度/增量：delta = error * k.T
+        delta = torch.bmm(error, k_t.transpose(1, 2))
+        
+        # 更新规则：M_new = Beta * M_old + Eta * Delta
+        state = (beta * state) + (eta * delta)
+    
+    # 第二步：用 decoder 的 query 查询记忆
+    for j in range(t_dec):
+        q_t = q_dec[:, j].unsqueeze(2)  # (B, D, 1)
+        # y = M * q
+        y_t = torch.bmm(state, q_t)
+        outputs[:, j] = y_t.squeeze(2)
+    
+    return outputs
+
+
+class HOPECrossAttention(nn.Module):
+    """
+    HOPE cross-attention：query 来自 decoder，key/value 来自 encoder
+    使用嵌套优化循环建立 encoder 的记忆，然后用 decoder query 查询
+    """
+    def __init__(self, dim, head_dim, learning_rate=0.1):
+        super().__init__()
+        self.dim = dim
+        self.head_dim = head_dim
+        self.num_heads = dim // head_dim
+        self.lr = learning_rate
+        
+        # Query 投影（来自 decoder）
+        self.W_q = nn.Linear(dim, dim, bias=False)
+        # Key/Value 投影（来自 encoder）
+        self.W_k = nn.Linear(dim, dim, bias=False)
+        self.W_v = nn.Linear(dim, dim, bias=False)
+        self.W_o = nn.Linear(dim, dim, bias=False)
+        
+        self.norm_q = nn.LayerNorm(dim)
+        self.norm_kv = nn.LayerNorm(dim)
+        
+        # 可学习的内部循环参数
+        self.eta = nn.Parameter(torch.ones(self.num_heads, 1, 1) * 0.5)
+        self.beta = nn.Parameter(torch.ones(self.num_heads, 1, 1) * 0.95)
+        
+    def forward(self, q_dec, k_enc, v_enc, mask=None):
+        """
+        q_dec: [B, L_dec, D] - decoder 输入
+        k_enc, v_enc: [B, L_enc, D] - encoder 输出
+        mask: [B, 1, L_dec, L_enc] 或 [B, L_dec, L_enc] - cross-attention mask
+        """
+        B, L_dec, _ = q_dec.shape
+        _, L_enc, _ = k_enc.shape
+        
+        # 归一化
+        q_norm = self.norm_q(q_dec)
+        k_norm = self.norm_kv(k_enc)
+        v_norm = self.norm_kv(v_enc)
+        
+        # 投影并重塑头
+        q = self.W_q(q_norm).view(B, L_dec, self.num_heads, self.head_dim).transpose(1, 2)  # [B, H, L_dec, D]
+        k = self.W_k(k_norm).view(B, L_enc, self.num_heads, self.head_dim).transpose(1, 2)  # [B, H, L_enc, D]
+        v = self.W_v(v_norm).view(B, L_enc, self.num_heads, self.head_dim).transpose(1, 2)  # [B, H, L_enc, D]
+        
+        # 归一化 K 以稳定外积投影
+        k = k / (torch.norm(k, dim=-1, keepdim=True) + 1e-6)
+        
+        # 重塑以进行并行扫描：合并批次和头 -> (B*Heads, L, D)
+        q_flat = q.reshape(B * self.num_heads, L_dec, self.head_dim)
+        k_flat = k.reshape(B * self.num_heads, L_enc, self.head_dim)
+        v_flat = v.reshape(B * self.num_heads, L_enc, self.head_dim)
+        
+        # 初始状态 M_0
+        initial_state = torch.zeros(B * self.num_heads, self.head_dim, self.head_dim, device=q_dec.device)
+        
+        # 扩展元参数
+        eta_flat = self.eta.repeat(B, 1, 1)
+        beta_flat = self.beta.repeat(B, 1, 1)
+        
+        # 运行 JIT cross-attention 扫描
+        out_flat = hope_cross_scan(k_flat, v_flat, q_flat, initial_state, eta_flat, beta_flat)
+        
+        # 重塑回 (B, L_dec, C)
+        out = out_flat.view(B, self.num_heads, L_dec, self.head_dim).transpose(1, 2).reshape(B, L_dec, self.dim)
+        
+        # 应用 mask（如果需要）
+        # 注意：HOPE 的记忆更新是顺序的，mask 主要用于 padding，可以在输出后应用
+        # 这里我们简单返回，mask 的处理可以在外层完成
+        
+        return self.W_o(out)
+
+
+class HOPEAttentionWithMask(nn.Module):
+    """
+    支持 mask 的 HOPE self-attention（用于 encoder 和 decoder self-attention）
+    """
+    def __init__(self, dim, head_dim, learning_rate=0.1):
+        super().__init__()
+        self.head_dim = head_dim
+        self.num_heads = dim // head_dim
+        self.lr = learning_rate
+        
+        # 多头投影
+        self.q_proj = nn.Linear(dim, dim, bias=False)
+        self.k_proj = nn.Linear(dim, dim, bias=False)
+        self.v_proj = nn.Linear(dim, dim, bias=False)
+        self.out_proj = nn.Linear(dim, dim, bias=False)
+        
+        self.norm = nn.LayerNorm(dim)
+        
+        # 可学习的内部循环参数
+        self.eta = nn.Parameter(torch.ones(self.num_heads, 1, 1) * 0.5)
+        self.beta = nn.Parameter(torch.ones(self.num_heads, 1, 1) * 0.95)
+        
+    def forward(self, x, mask=None):
+        """
+        x: [B, T, C]
+        mask: [B, 1, T, T] 或 [B, T, T]，1=屏蔽，0=保留
+        """
+        B, T, C = x.shape
+        x_norm = self.norm(x)
+        
+        # 投影并重塑头
+        q = self.q_proj(x_norm).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x_norm).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(x_norm).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+        
+        # 归一化 K 以稳定外积投影
+        k = k / (torch.norm(k, dim=-1, keepdim=True) + 1e-6)
+        
+        # 处理 mask：如果提供了 mask，需要在记忆更新时跳过被屏蔽的位置
+        # 简化处理：在顺序扫描时检查 mask
+        if mask is not None:
+            # 确保 mask 是 [B, H, T, T] 格式
+            if mask.dim() == 3:
+                mask = mask.unsqueeze(1)  # [B, 1, T, T]
+            if mask.size(1) == 1:
+                mask = mask.expand(B, self.num_heads, T, T)  # [B, H, T, T]
+            mask = mask.bool()  # 转换为 bool
+        
+        # 重塑以进行并行扫描：合并批次和头 -> (B*Heads, T, D)
+        q_flat = q.reshape(B * self.num_heads, T, self.head_dim)
+        k_flat = k.reshape(B * self.num_heads, T, self.head_dim)
+        v_flat = v.reshape(B * self.num_heads, T, self.head_dim)
+        
+        # 初始状态 M_0
+        initial_state = torch.zeros(B * self.num_heads, self.head_dim, self.head_dim, device=x.device)
+        
+        # 扩展元参数
+        eta_flat = self.eta.repeat(B, 1, 1)
+        beta_flat = self.beta.repeat(B, 1, 1)
+        
+        # 如果有 mask，需要逐位置处理
+        if mask is not None:
+            mask_flat = mask.reshape(B * self.num_heads, T, T)
+            outputs = []
+            state = initial_state
+            
+            for i in range(T):
+                # 检查哪些位置可以用于更新记忆（mask[i, j] == False 表示可以关注）
+                valid_positions = ~mask_flat[:, i, :]  # [B*H, T]
+                
+                # 查询记忆
+                q_t = q_flat[:, i].unsqueeze(2)  # [B*H, D, 1]
+                y_t = torch.bmm(state, q_t)
+                outputs.append(y_t.squeeze(2))
+                
+                # 更新记忆（只使用未被屏蔽的位置）
+                for j in range(T):
+                    if valid_positions[:, j].any():
+                        k_t = k_flat[:, j].unsqueeze(2)  # [B*H, D, 1]
+                        v_t = v_flat[:, j].unsqueeze(2)
+                        
+                        # 只更新有效位置
+                        valid_mask = valid_positions[:, j].unsqueeze(1).unsqueeze(2).float()  # [B*H, 1, 1]
+                        
+                        v_pred = torch.bmm(state, k_t)
+                        error = v_t - v_pred
+                        delta = torch.bmm(error, k_t.transpose(1, 2))
+                        
+                        # 只更新有效位置
+                        state = state * (1 - valid_mask) + ((beta_flat * state) + (eta_flat * delta)) * valid_mask
+            
+            out_flat = torch.stack(outputs, dim=1)
+        else:
+            # 无 mask，使用 JIT 扫描
+            out_flat = hope_scan(k_flat, v_flat, q_flat, initial_state, eta_flat, beta_flat)
+        
+        # 重塑回 (B, T, C)
+        out = out_flat.view(B, self.num_heads, T, self.head_dim).transpose(1, 2).reshape(B, T, C)
+        
+        return self.out_proj(out) + x
+
+
 def toy_training_loop():
     """HOPE 模型的玩具训练示例。"""
     # 配置

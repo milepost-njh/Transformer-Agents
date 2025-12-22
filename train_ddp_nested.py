@@ -31,6 +31,9 @@ from collections import OrderedDict
 from core.normalization import RMSNorm, LayerNorm
 from training.parallel.config import ParallelConfig, ParallelMode
 from training.parallel.factory import create_backend
+# 导入 nested 架构组件
+from core.nested.hope import HOPEAttentionWithMask, HOPECrossAttention
+from core.nested.cms import CMSForSequence
 
 # 多卡训练设置（DDP 通过后端统一管理）
 import torch.distributed as dist
@@ -938,10 +941,11 @@ def feed_forward_network(d_model, dff, use_moe=False, moe_config=None):
         )
 
 
-class EncoderLayer(nn.Module):
+class NestedEncoderLayer(nn.Module):
     """
-    x -> self-attention -> add & norm & dropout
-      -> feed-forward   -> add & norm & dropout
+    嵌套架构的 EncoderLayer：使用 HOPE self-attention 和 CMS FFN
+    x -> HOPE self-attention -> add & norm & dropout
+      -> CMS feed-forward   -> add & norm & dropout
     期望输入:
       x: [B, L, d_model]
       src_mask: [B, 1, L, L] 或 [B, L, L]，其中 1 表示屏蔽，0 表示保留
@@ -951,9 +955,12 @@ class EncoderLayer(nn.Module):
                  use_moe: bool = False, moe_config=None, use_mla: bool = False,
                  q_lora_rank: int = None, kv_lora_rank: int = None):
         super().__init__()
-        self.mha = MultiHeadAttention(d_model, num_heads, use_rope=use_rope, use_mla=use_mla,
-                                      q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)  # 支持 MLA
-        self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)  # 支持 MoE
+        head_dim = d_model // num_heads
+        # 使用 HOPE self-attention（支持 mask）
+        self.hope_attn = HOPEAttentionWithMask(d_model, head_dim=head_dim)
+        # 使用 CMS FFN（确保 expansion_factor >= 1）
+        expansion_factor = max(1, dff // d_model) if dff >= d_model else 4
+        self.cms_ffn = CMSForSequence(d_model, levels=3, expansion_factor=expansion_factor)
 
         self.norm1 = RMSNorm(d_model, eps=1e-6)
         self.norm2 = RMSNorm(d_model, eps=1e-6)
@@ -965,10 +972,68 @@ class EncoderLayer(nn.Module):
                 past_key_value: Tuple[torch.Tensor, torch.Tensor] = None, use_cache: bool = False):
         """
         返回:
+          out: [B, L, d_model]
+          present_key_value: None (HOPE 不支持 KV-cache，返回 None 以保持接口兼容)
+        """
+        # HOPE self-attention（注意：HOPE 内部处理了残差连接）
+        attn_out = self.hope_attn(x, mask=src_mask)
+        attn_out = self.dropout1(attn_out)
+        out1 = self.norm1(attn_out)  # HOPE 已经包含残差，这里只做归一化（实际上已经是 x + attn_out）
+
+        # CMS Feed Forward（CMS 内部处理了残差连接）
+        ffn_out = self.cms_ffn(out1)
+        ffn_out = self.dropout2(ffn_out)
+        out2 = self.norm2(ffn_out)
+
+        # HOPE 不支持 KV-cache，返回 None
+        present_key_value = None
+        
+        # 返回值处理（保持接口兼容）
+        if use_cache:
+            return out2, present_key_value
+        else:
+            return out2
+
+
+class EncoderLayer(nn.Module):
+    """
+    x -> self-attention -> add & norm & dropout
+      -> feed-forward   -> add & norm & dropout
+    期望输入:
+      x: [B, L, d_model]
+      src_mask: [B, 1, L, L] 或 [B, L, L]，其中 1 表示屏蔽，0 表示保留
+    """
+
+    def __init__(self, d_model: int, num_heads: int, dff: int, rate: float = 0.1, use_rope: bool = True,
+                 use_moe: bool = False, moe_config=None, use_mla: bool = False,
+                 q_lora_rank: int = None, kv_lora_rank: int = None, use_nested: bool = False):
+        super().__init__()
+        if use_nested:
+            # 使用嵌套架构
+            self.layer = NestedEncoderLayer(d_model, num_heads, dff, rate, use_rope, 
+                                           use_moe, moe_config, use_mla, q_lora_rank, kv_lora_rank)
+        else:
+            # 使用标准架构
+            self.mha = MultiHeadAttention(d_model, num_heads, use_rope=use_rope, use_mla=use_mla,
+                                          q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)
+            self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)
+            self.norm1 = RMSNorm(d_model, eps=1e-6)
+            self.norm2 = RMSNorm(d_model, eps=1e-6)
+            self.dropout1 = nn.Dropout(rate)
+            self.dropout2 = nn.Dropout(rate)
+        self.use_nested = use_nested
+
+    def forward(self, x: torch.Tensor, src_mask: torch.Tensor = None, 
+                past_key_value: Tuple[torch.Tensor, torch.Tensor] = None, use_cache: bool = False):
+        """
+        返回:
           out: [B, L, d_model] 或 (out, router_logits) 如果使用 MoE
           present_key_value: 当前的KV-cache（如果use_cache=True）
         """
-        # TODO: 全局自注意力 - 编码器中的自注意力，可以关注序列中的所有位置
+        if self.use_nested:
+            return self.layer(x, src_mask=src_mask, past_key_value=past_key_value, use_cache=use_cache)
+        
+        # 标准架构
         mha_output = self.mha(x, x, x, mask=src_mask, past_key_value=past_key_value, use_cache=use_cache)
         
         # 处理MHA的返回值
@@ -978,11 +1043,11 @@ class EncoderLayer(nn.Module):
             attn_out, _ = mha_output
             present_key_value = None
         
-        attn_out = self.dropout1(attn_out)  # 训练模式下生效
-        out1 = self.norm1(x + attn_out)  # 残差 + RMSNorm
+        attn_out = self.dropout1(attn_out)
+        out1 = self.norm1(x + attn_out)
 
         # Feed Forward
-        ffn_out = self.ffn(out1)  # [B, L, d_model] 或 (ffn_out, router_logits) 如果使用 MoE
+        ffn_out = self.ffn(out1)
         if isinstance(ffn_out, tuple):
             ffn_out, router_logits = ffn_out
         else:
@@ -1002,6 +1067,91 @@ class EncoderLayer(nn.Module):
             return out2
 
 
+class NestedDecoderLayer(nn.Module):
+    """
+    嵌套架构的 DecoderLayer：使用 HOPE self-attention、HOPE cross-attention 和 CMS FFN
+    x -> HOPE masked self-attention -> add & norm & dropout -> out1
+    out1, enc_out -> HOPE cross-attention -> add & norm & dropout -> out2
+    out2 -> CMS FFN -> add & norm & dropout -> out3
+    期望输入:
+      x: [B, L_tgt, d_model]
+      enc_out: [B, L_src, d_model]
+      tgt_mask: [B, 1, L_tgt, L_tgt] 或 [B, L_tgt, L_tgt]  (look-ahead + padding 的合并掩码，1=屏蔽)
+      enc_dec_mask: [B, 1, L_tgt, L_src] 或 [B, L_tgt, L_src]  (decoder 对 encoder 的 padding 掩码，1=屏蔽)
+    """
+
+    def __init__(self, d_model: int, num_heads: int, dff: int, rate: float = 0.1, use_rope: bool = True,
+                 use_moe: bool = False, moe_config=None, use_mla: bool = False,
+                 q_lora_rank: int = None, kv_lora_rank: int = None):
+        super().__init__()
+        head_dim = d_model // num_heads
+        # HOPE masked self-attention
+        self.hope_self_attn = HOPEAttentionWithMask(d_model, head_dim=head_dim)
+        # HOPE cross-attention
+        self.hope_cross_attn = HOPECrossAttention(d_model, head_dim=head_dim)
+        # CMS FFN（确保 expansion_factor >= 1）
+        expansion_factor = max(1, dff // d_model) if dff >= d_model else 4
+        self.cms_ffn = CMSForSequence(d_model, levels=3, expansion_factor=expansion_factor)
+
+        self.norm1 = RMSNorm(d_model, eps=1e-6)
+        self.norm2 = RMSNorm(d_model, eps=1e-6)
+        self.norm3 = RMSNorm(d_model, eps=1e-6)
+
+        self.dropout1 = nn.Dropout(rate)
+        self.dropout2 = nn.Dropout(rate)
+        self.dropout3 = nn.Dropout(rate)
+
+    def forward(
+            self,
+            x: torch.Tensor,
+            enc_out: torch.Tensor,
+            tgt_mask: torch.Tensor = None,
+            enc_dec_mask: torch.Tensor = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]] = None,
+            use_cache: bool = False,
+    ):
+        """
+        Args:
+            x: decoder输入 [B, Lt, D]
+            enc_out: encoder输出 [B, Ls, D]
+            tgt_mask: decoder自注意力mask
+            enc_dec_mask: encoder-decoder交叉注意力mask
+            past_key_values: None (HOPE 不支持 KV-cache)
+            use_cache: False (HOPE 不支持 KV-cache)
+        
+        Returns:
+            out3: decoder输出
+            attn_weights1: None (HOPE 不返回注意力权重)
+            attn_weights2: None (HOPE 不返回注意力权重)
+            present_key_values: None (HOPE 不支持 KV-cache)
+        """
+        # HOPE masked self-attention（内部处理残差）
+        attn1_out = self.hope_self_attn(x, mask=tgt_mask)
+        attn1_out = self.dropout1(attn1_out)
+        out1 = self.norm1(attn1_out)
+
+        # HOPE cross-attention
+        attn2_out = self.hope_cross_attn(out1, enc_out, enc_out, mask=enc_dec_mask)
+        attn2_out = self.dropout2(attn2_out)
+        out2 = self.norm2(out1 + attn2_out)  # 需要手动添加残差
+
+        # CMS FFN（内部处理残差）
+        ffn_out = self.cms_ffn(out2)
+        ffn_out = self.dropout3(ffn_out)
+        out3 = self.norm3(ffn_out)
+
+        # HOPE 不支持 KV-cache 和注意力权重
+        present_key_values = None
+        attn_weights1 = None
+        attn_weights2 = None
+
+        # 返回值处理（保持接口兼容）
+        if use_cache:
+            return out3, attn_weights1, attn_weights2, present_key_values
+        else:
+            return out3, attn_weights1, attn_weights2
+
+
 class DecoderLayer(nn.Module):
     """
     x -> masked self-attention -> add & norm & dropout -> out1
@@ -1016,22 +1166,26 @@ class DecoderLayer(nn.Module):
 
     def __init__(self, d_model: int, num_heads: int, dff: int, rate: float = 0.1, use_rope: bool = True,
                  use_moe: bool = False, moe_config=None, use_mla: bool = False,
-                 q_lora_rank: int = None, kv_lora_rank: int = None):
+                 q_lora_rank: int = None, kv_lora_rank: int = None, use_nested: bool = False):
         super().__init__()
-        self.mha1 = MultiHeadAttention(d_model, num_heads, use_rope=use_rope, use_mla=use_mla,
-                                       q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)  # masked self-attn
-        self.mha2 = MultiHeadAttention(d_model, num_heads, use_rope=use_rope, use_mla=use_mla,
-                                       q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)  # cross-attn
-
-        self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)
-
-        self.norm1 = RMSNorm(d_model, eps=1e-6)
-        self.norm2 = RMSNorm(d_model, eps=1e-6)
-        self.norm3 = RMSNorm(d_model, eps=1e-6)
-
-        self.dropout1 = nn.Dropout(rate)
-        self.dropout2 = nn.Dropout(rate)
-        self.dropout3 = nn.Dropout(rate)
+        if use_nested:
+            # 使用嵌套架构
+            self.layer = NestedDecoderLayer(d_model, num_heads, dff, rate, use_rope,
+                                           use_moe, moe_config, use_mla, q_lora_rank, kv_lora_rank)
+        else:
+            # 使用标准架构
+            self.mha1 = MultiHeadAttention(d_model, num_heads, use_rope=use_rope, use_mla=use_mla,
+                                           q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)
+            self.mha2 = MultiHeadAttention(d_model, num_heads, use_rope=use_rope, use_mla=use_mla,
+                                           q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)
+            self.ffn = feed_forward_network(d_model, dff, use_moe=use_moe, moe_config=moe_config)
+            self.norm1 = RMSNorm(d_model, eps=1e-6)
+            self.norm2 = RMSNorm(d_model, eps=1e-6)
+            self.norm3 = RMSNorm(d_model, eps=1e-6)
+            self.dropout1 = nn.Dropout(rate)
+            self.dropout2 = nn.Dropout(rate)
+            self.dropout3 = nn.Dropout(rate)
+        self.use_nested = use_nested
 
     def forward(
             self,
@@ -1058,13 +1212,17 @@ class DecoderLayer(nn.Module):
             present_key_values: 当前的KV-cache (如果use_cache=True)
             router_logits: MoE路由logits (如果使用MoE)
         """
+        if self.use_nested:
+            return self.layer(x, enc_out, tgt_mask=tgt_mask, enc_dec_mask=enc_dec_mask,
+                            past_key_values=past_key_values, use_cache=use_cache)
+        
+        # 标准架构
         # 解析past_key_values
         if past_key_values is not None:
             self_attn_past_kv, cross_attn_past_kv = past_key_values
         else:
             self_attn_past_kv, cross_attn_past_kv = None, None
         
-        # TODO: 掩码自注意力 - 解码器自注意力，使用look-ahead+padding掩码防止信息泄露
         mha1_output = self.mha1(x, x, x, mask=tgt_mask, past_key_value=self_attn_past_kv, use_cache=use_cache)
         
         if use_cache:
@@ -1076,24 +1234,22 @@ class DecoderLayer(nn.Module):
         attn1_out = self.dropout1(attn1_out)
         out1 = self.norm1(x + attn1_out)
 
-        # TODO: 交叉注意力 - 解码器对编码器输出的注意力，query来自decoder，key/value来自encoder
-        # 注意：cross-attention不使用cache，因为encoder输出是固定的
         mha2_output = self.mha2(out1, enc_out, enc_out, mask=enc_dec_mask, past_key_value=None, use_cache=False)
         attn2_out, attn_weights2 = mha2_output
-        cross_attn_present_kv = None  # cross-attention不需要cache
+        cross_attn_present_kv = None
         
         attn2_out = self.dropout2(attn2_out)
         out2 = self.norm2(out1 + attn2_out)
 
         # 3) FFN
-        ffn_out = self.ffn(out2)  # [B,Lt,D] 或 (ffn_out, router_logits) 如果使用 MoE
+        ffn_out = self.ffn(out2)
         if isinstance(ffn_out, tuple):
             ffn_out, router_logits = ffn_out
         else:
             router_logits = None
 
         ffn_out = self.dropout3(ffn_out)
-        out3 = self.norm3(out2 + ffn_out)  # [B,Lt,D]
+        out3 = self.norm3(out2 + ffn_out)
 
         # 组合present_key_values
         present_key_values = None
@@ -1115,9 +1271,10 @@ class EncoderModel(nn.Module):
     def __init__(self, num_layers: int, input_vocab_size: int, max_length: int,
                  d_model: int, num_heads: int, dff: int, rate: float = 0.1,
                  padding_idx: int = None, use_rope: bool = True, use_moe: bool = False, moe_config=None,
-                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None):
+                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None, use_nested: bool = True):
         """
         参数与 Keras 版本对齐；额外提供 padding_idx 以便 Embedding 忽略 pad 的梯度。
+        use_nested: 是否使用嵌套架构（HOPE + CMS），默认 True
         """
         super().__init__()
         self.d_model = d_model
@@ -1135,10 +1292,11 @@ class EncoderModel(nn.Module):
 
         self.dropout = nn.Dropout(rate)
 
-        # 堆叠 EncoderLayer（前面我们已实现过）
+        # 堆叠 EncoderLayer（使用嵌套架构）
         self.encoder_layers = nn.ModuleList(
             [EncoderLayer(d_model, num_heads, dff, rate, use_rope=self.use_rope, use_moe=use_moe,
-                          moe_config=moe_config, use_mla=use_mla, q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)
+                          moe_config=moe_config, use_mla=use_mla, q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank,
+                          use_nested=use_nested)
              for _ in range(num_layers)]
         )
 
@@ -1219,7 +1377,7 @@ class DecoderModel(nn.Module):
     def __init__(self, num_layers: int, target_vocab_size: int, max_length: int,
                  d_model: int, num_heads: int, dff: int, rate: float = 0.1,
                  padding_idx: int = None, use_rope: bool = True, use_moe: bool = False, moe_config=None,
-                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None):
+                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None, use_nested: bool = True):
         super().__init__()
         self.num_layers = num_layers
         self.max_length = max_length
@@ -1236,10 +1394,11 @@ class DecoderModel(nn.Module):
 
         self.dropout = nn.Dropout(rate)
 
-        # 堆叠解码层
+        # 堆叠解码层（使用嵌套架构）
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, num_heads, dff, rate, use_rope=self.use_rope, use_moe=use_moe,
-                          moe_config=moe_config, use_mla=use_mla, q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank)
+                          moe_config=moe_config, use_mla=use_mla, q_lora_rank=q_lora_rank, kv_lora_rank=kv_lora_rank,
+                          use_nested=use_nested)
              for _ in range(num_layers)]
         )
 
@@ -1332,7 +1491,7 @@ class Transformer(nn.Module):
                  max_length, d_model, num_heads, dff, rate=0.1,
                  src_padding_idx: int = None, tgt_padding_idx: int = None,
                  use_rope: bool = True, use_moe: bool = False, moe_config=None,
-                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None):
+                 use_mla: bool = False, q_lora_rank: int = None, kv_lora_rank: int = None, use_nested: bool = True):
         super().__init__()
         self.encoder_model = EncoderModel(
             num_layers=num_layers,
@@ -1349,6 +1508,7 @@ class Transformer(nn.Module):
             use_mla=use_mla,
             q_lora_rank=q_lora_rank,
             kv_lora_rank=kv_lora_rank,
+            use_nested=use_nested,
         )
         self.decoder_model = DecoderModel(
             num_layers=num_layers,
@@ -1365,6 +1525,7 @@ class Transformer(nn.Module):
             use_mla=use_mla,
             q_lora_rank=q_lora_rank,
             kv_lora_rank=kv_lora_rank,
+            use_nested=use_nested,
         )
         # 等价于 Keras 的 Dense(target_vocab_size)
         self.final_layer = nn.Linear(d_model, target_vocab_size)
