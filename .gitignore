@@ -110,3 +110,4 @@ create-dataset/pretrain/checkpoints/
 create-dataset/finetune/test_data/
 create-dataset/finetune/data/
 *.zip
+.cursorrules
